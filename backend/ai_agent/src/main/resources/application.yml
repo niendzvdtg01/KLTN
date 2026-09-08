@@ -1,0 +1,20 @@
+spring:
+  flyway:
+    enabled: true
+    validate-migration-naming: true
+  datasource:
+    url: jdbc:mysql://localhost:3308/ai_agent?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+    username: root
+    password: 1234
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+
+logging:
+  level:
+    org.flywaydb: DEBUG
