@@ -14,54 +14,58 @@ import jakarta.servlet.http.HttpServletResponse;
 
 @Component
 public class AuthFilter extends OncePerRequestFilter {
+
+    private static final String ACCESS_COOKIE = "access_cookie";
+    private static final String CREATE_USER_PATH = "/user/create_user";
+
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
-        String method = request.getMethod();
-        String path = request.getRequestURI();
-
-        if ("OPTIONS".equalsIgnoreCase(method)) {
-            response.setStatus(HttpServletResponse.SC_OK);
-            return;
-        }
-
-        // public endpoint
-        if (path.contains("/auth/")) {
-            filterChain.doFilter(request, response);
-            return;
-        }
-        if (path.contains("/user/create_user")) {
+        if (isPreflightRequest(request) || isPublicRequest(request)) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        Cookie[] cookies = request.getCookies();
-        String token = null;
+        String token = findAccessToken(request);
+        if (token == null) {
+            writeError(response, HttpServletResponse.SC_UNAUTHORIZED, "Missing required cookie");
+            return;
+        }
 
-        if (cookies != null) {
-            for (Cookie cookie : cookies) {
-                if ("access_cookie".equals(cookie.getName())) {
-                    token = cookie.getValue();
-                    break;
-                }
+        if (!JwtUtils.validateToken(token)) {
+            writeError(response, HttpServletResponse.SC_FORBIDDEN, "Invalid or expired token");
+            return;
+        }
+
+        SecurityContextHolder.getContext().setAuthentication(JwtUtils.getAuthentication(token));
+        filterChain.doFilter(request, response);
+    }
+
+    private boolean isPreflightRequest(HttpServletRequest request) {
+        return "OPTIONS".equalsIgnoreCase(request.getMethod());
+    }
+
+    private boolean isPublicRequest(HttpServletRequest request) {
+        String path = request.getServletPath();
+        return path.startsWith("/auth/") || CREATE_USER_PATH.equals(path);
+    }
+
+    private String findAccessToken(HttpServletRequest request) {
+        if (request.getCookies() == null) {
+            return null;
+        }
+
+        for (Cookie cookie : request.getCookies()) {
+            if (ACCESS_COOKIE.equals(cookie.getName())) {
+                return cookie.getValue();
             }
         }
+        return null;
+    }
 
-        if (token == null) {
-            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            response.getWriter().write("Missing requried cookie!!");
-            return;
-        }
-
-        if (!jwtUtils.validateToken(token)) {
-            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
-            response.getWriter().write("Invalid or expired token");
-            return;
-        }
-
-        var auth = jwtUtils.getAuthentication(token);
-        SecurityContextHolder.getContext().setAuthentication(auth);
-
-        filterChain.doFilter(request, response);
+    private void writeError(HttpServletResponse response, int status, String message) throws IOException {
+        response.setStatus(status);
+        response.setContentType("text/plain");
+        response.getWriter().write(message);
     }
 }
