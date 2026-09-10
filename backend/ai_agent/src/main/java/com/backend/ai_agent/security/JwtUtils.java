@@ -13,15 +13,12 @@ import com.backend.ai_agent.entity.UserEntity;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 
-public final class JwtUtils {
+public class JwtUtils {
 
     private static final SecretKey SECRET_KEY = Jwts.SIG.HS512.key().build();
     private static final long EXPIRATION_TIME_MILLIS = 36_000_000L;
     private static final String USER_ID_CLAIM = "userId";
     private static final String ISSUER = "Niendz";
-
-    private JwtUtils() {
-    }
 
     public static String generateToken(UserEntity user) {
         Date now = new Date();
