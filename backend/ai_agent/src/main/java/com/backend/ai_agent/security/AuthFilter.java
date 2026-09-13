@@ -16,7 +16,7 @@ import jakarta.servlet.http.HttpServletResponse;
 public class AuthFilter extends OncePerRequestFilter {
 
     private static final String ACCESS_COOKIE = "access_cookie";
-    private static final String CREATE_USER_PATH = "/user/create_user";
+    private static final String CREATE_USER_PATH = "v1/user/create_user";
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -47,7 +47,7 @@ public class AuthFilter extends OncePerRequestFilter {
 
     private boolean isPublicRequest(HttpServletRequest request) {
         String path = request.getServletPath();
-        return path.startsWith("/auth/") || CREATE_USER_PATH.equals(path);
+        return path.startsWith("/auth/") || path.contains(CREATE_USER_PATH);
     }
 
     private String findAccessToken(HttpServletRequest request) {

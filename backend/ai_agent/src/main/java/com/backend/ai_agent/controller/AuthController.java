@@ -22,8 +22,12 @@ import org.springframework.web.bind.annotation.RequestBody;
 @Controller 
 @RequestMapping("v1/auth")
 public class AuthController {
-    private AuthService authServicce;
+    private final AuthService authServicce;
     private final String COOKIE_NAME = "access_cookie";
+
+    public AuthController(AuthService authServicce) {
+        this.authServicce = authServicce;
+    }
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest request, HttpServletResponse response) {

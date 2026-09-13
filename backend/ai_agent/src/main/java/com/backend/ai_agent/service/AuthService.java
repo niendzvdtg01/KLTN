@@ -1,6 +1,6 @@
 package com.backend.ai_agent.service;
 
-import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import com.backend.ai_agent.dto.request.LoginRequest;
@@ -10,10 +10,11 @@ import com.backend.ai_agent.repository.UserRepository;
 @Service
 public class AuthService {
     private final UserRepository userRepository;
-    private Argon2PasswordEncoder encoder;
+    private final PasswordEncoder encoder;
 
-    public AuthService(UserRepository userRepository) {
+    public AuthService(UserRepository userRepository, PasswordEncoder encoder) {
         this.userRepository = userRepository;
+        this.encoder = encoder;
     }
 
     public UserEntity authenticate(LoginRequest request){
