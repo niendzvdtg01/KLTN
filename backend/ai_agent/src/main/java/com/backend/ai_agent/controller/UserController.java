@@ -15,6 +15,7 @@ import com.backend.ai_agent.dto.request.UpdateUserRequest;
 import com.backend.ai_agent.dto.request.UserRequest;
 import com.backend.ai_agent.dto.response.UserResponse;
 import com.backend.ai_agent.entity.UserEntity;
+import com.backend.ai_agent.exception.UnauthorizedException;
 import com.backend.ai_agent.service.UserService;
 
 @RestController
@@ -58,6 +59,6 @@ public class UserController {
         if (principal instanceof Number userId) {
             return userId.longValue();
         }
-        throw new IllegalStateException("Invalid authenticated user");
+        throw new UnauthorizedException("Phiên đăng nhập không hợp lệ");
     }
 }

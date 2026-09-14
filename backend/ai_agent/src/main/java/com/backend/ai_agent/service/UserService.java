@@ -2,12 +2,13 @@ package com.backend.ai_agent.service;
 
 import java.util.Locale;
 
-import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
 
 import com.backend.ai_agent.entity.UserEntity;
+import com.backend.ai_agent.exception.BadRequestException;
+import com.backend.ai_agent.exception.ConflictException;
+import com.backend.ai_agent.exception.NotFoundException;
 import com.backend.ai_agent.repository.UserRepository;
 
 @Service
@@ -28,7 +29,7 @@ public class UserService {
         validateInput(fullName, normalizedEmail, password);
 
         if (userRepository.existsByEmailIgnoreCase(normalizedEmail)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already exists");
+            throw new ConflictException("Email đã tồn tại");
         }
 
         UserEntity user = new UserEntity();
@@ -40,7 +41,7 @@ public class UserService {
 
     public UserEntity findById(Long id) {
         return userRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy người dùng"));
     }
 
     public UserEntity updateUser(Long id, String fullName, String email) {
@@ -48,13 +49,13 @@ public class UserService {
         String normalizedEmail = normalizeEmail(email);
 
         if (fullName == null || fullName.isBlank() || normalizedEmail == null || normalizedEmail.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Full name and email are required");
+            throw new BadRequestException("Họ tên và email là bắt buộc");
         }
 
         userRepository.findByEmailIgnoreCase(normalizedEmail)
                 .filter(existing -> !existing.getId().equals(id))
                 .ifPresent(existing -> {
-                    throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already exists");
+                    throw new ConflictException("Email đã tồn tại");
                 });
 
         user.setFullName(fullName.trim());
@@ -70,9 +71,7 @@ public class UserService {
     private void validateInput(String fullName, String email, String password) {
         if (isBlank(fullName) || isBlank(email) || isBlank(password)
                 || password.length() < MIN_PASSWORD_LENGTH) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Full name, email and password of at least 8 characters are required");
+            throw new BadRequestException("Họ tên, email và mật khẩu tối thiểu 8 ký tự là bắt buộc");
         }
     }
 

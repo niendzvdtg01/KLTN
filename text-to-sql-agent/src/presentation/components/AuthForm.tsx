@@ -26,7 +26,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
     try {
       if (isLogin) await login(email, password);
       else { await register(fullName, email, password); await login(email, password); }
-      router.push("/");
+      router.push("/workspace");
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Không thể kết nối tới máy chủ.");
     } finally { setIsSubmitting(false); }

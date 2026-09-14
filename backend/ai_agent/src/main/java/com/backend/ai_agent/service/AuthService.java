@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service;
 
 import com.backend.ai_agent.dto.request.LoginRequest;
 import com.backend.ai_agent.entity.UserEntity;
+import com.backend.ai_agent.exception.UnauthorizedException;
 import com.backend.ai_agent.repository.UserRepository;
 
 @Service
@@ -18,9 +19,13 @@ public class AuthService {
     }
 
     public UserEntity authenticate(LoginRequest request){
-        UserEntity user = userRepository.findByEmailIgnoreCase(request.email()).orElseThrow(() -> new RuntimeException("Email is not exist!"));
+        if (request == null || request.email() == null || request.password() == null) {
+            throw new UnauthorizedException("Email hoặc mật khẩu không hợp lệ");
+        }
+        UserEntity user = userRepository.findByEmailIgnoreCase(request.email().trim())
+                .orElseThrow(() -> new UnauthorizedException("Email hoặc mật khẩu không đúng"));
         if(!encoder.matches(request.password(), user.getPasswordHash())){
-            throw new RuntimeException("Incorect password");
+            throw new UnauthorizedException("Email hoặc mật khẩu không đúng");
         }
         return user;
     } 

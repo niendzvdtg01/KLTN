@@ -47,7 +47,7 @@ public class AuthFilter extends OncePerRequestFilter {
 
     private boolean isPublicRequest(HttpServletRequest request) {
         String path = request.getServletPath();
-        return path.startsWith("/auth/") || path.contains(CREATE_USER_PATH);
+        return path.startsWith("/v1/auth/") || path.contains(CREATE_USER_PATH);
     }
 
     private String findAccessToken(HttpServletRequest request) {
