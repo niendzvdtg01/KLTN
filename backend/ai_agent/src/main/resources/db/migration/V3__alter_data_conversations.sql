@@ -19,7 +19,7 @@ ALTER TABLE data_sources
 -- Add ownership and lifecycle status to conversations.
 ALTER TABLE conversations
     ADD COLUMN user_id BIGINT NOT NULL,
-    ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    ADD COLUMN usstat VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
     ADD COLUMN last_message_at DATETIME(6) NULL,
     ADD KEY idx_conversations_user_updated (user_id, updated_at),
     ADD CONSTRAINT fk_conversations_user

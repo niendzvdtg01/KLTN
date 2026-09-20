@@ -4,7 +4,17 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Icon } from "@/src/presentation/components/Icon";
+import { ConversationSidebar } from "@/src/presentation/components/ConversationSidebar";
 import { getCurrentUser, logout, type AuthUser } from "@/src/data/authApi";
+import {
+  archiveConversation,
+  createConversation,
+  listConversationMessages,
+  listConversations,
+  updateConversation,
+  type Conversation,
+  type ConversationMessage,
+} from "@/src/data/conversationApi";
 import {
   archiveDataSource,
   createDataSource,
@@ -44,6 +54,10 @@ export default function Workspace() {
   const [notice, setNotice] = useState("");
   const [sourceBusy, setSourceBusy] = useState(false);
   const [activeTab, setActiveTab] = useState<"table" | "sql">("table");
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [selectedConversationId, setSelectedConversationId] = useState<number | null>(null);
+  const [conversationMessages, setConversationMessages] = useState<ConversationMessage[]>([]);
+  const [conversationBusy, setConversationBusy] = useState(false);
 
   const { state, runQuery, setQuestion } = useTextToSql();
   const selectedSource =
@@ -54,14 +68,76 @@ export default function Workspace() {
   );
 
   useEffect(() => {
-    Promise.all([getCurrentUser(), listDataSources()])
-      .then(([currentUser, data]) => {
+    Promise.all([getCurrentUser(), listDataSources(), listConversations()])
+      .then(([currentUser, data, conversationData]) => {
         setUser(currentUser);
         setSources(data);
         setSelectedId(data[0]?.id ?? null);
+        setConversations(conversationData);
+        setSelectedConversationId(conversationData.find((item) => item.status === "ACTIVE")?.id ?? null);
       })
       .catch(() => router.replace("/login"));
   }, [router]);
+
+  async function handleNewConversation() {
+    if (!selectedSource || selectedSource.status !== "ACTIVE") {
+      setNotice("Hãy chọn một data source đang ACTIVE trước.");
+      return;
+    }
+
+    setConversationBusy(true);
+    try {
+      const created = await createConversation("New conversation", selectedSource.id);
+      setConversations((current) => [created, ...current]);
+      setSelectedConversationId(created.id);
+      setConversationMessages([]);
+      setQuestion("");
+      setNotice("Đã tạo conversation mới.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không thể tạo conversation.");
+    } finally {
+      setConversationBusy(false);
+    }
+  }
+
+  async function handleSelectConversation(conversation: Conversation) {
+    setSelectedConversationId(conversation.id);
+    setConversationBusy(true);
+    try {
+      setConversationMessages(await listConversationMessages(conversation.id));
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không thể tải lịch sử conversation.");
+    } finally {
+      setConversationBusy(false);
+    }
+  }
+
+  async function handleRenameConversation(conversation: Conversation, title: string) {
+    setConversationBusy(true);
+    try {
+      const updated = await updateConversation(conversation.id, title);
+      setConversations((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setNotice("Đã đổi tên conversation.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không thể đổi tên conversation.");
+    } finally {
+      setConversationBusy(false);
+    }
+  }
+
+  async function handleArchiveConversation(conversation: Conversation) {
+    setConversationBusy(true);
+    try {
+      await archiveConversation(conversation.id);
+      setConversations((current) => current.map((item) => item.id === conversation.id ? { ...item, status: "ARCHIVED" } : item));
+      if (selectedConversationId === conversation.id) setSelectedConversationId(null);
+      setNotice("Đã archive conversation. Lịch sử vẫn được giữ lại.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không thể archive conversation.");
+    } finally {
+      setConversationBusy(false);
+    }
+  }
 
   function updateSourceField<K extends keyof DataSourceInput>(
     field: K,
@@ -166,7 +242,7 @@ export default function Workspace() {
           <span>queryly</span>
         </div>
 
-        <button className="new-query" onClick={() => setQuestion("")}>
+        <button className="new-query" onClick={handleNewConversation} disabled={conversationBusy}>
           <Icon name="plus" size={17} />
           New query
           <span>⌘ K</span>
@@ -186,6 +262,16 @@ export default function Workspace() {
             Saved queries
           </a>
         </nav>
+
+        <ConversationSidebar
+          conversations={conversations}
+          selectedId={selectedConversationId}
+          busy={conversationBusy}
+          onNew={handleNewConversation}
+          onSelect={handleSelectConversation}
+          onRename={handleRenameConversation}
+          onArchive={handleArchiveConversation}
+        />
 
         <div className="sidebar-spacer" />
 
@@ -280,6 +366,10 @@ export default function Workspace() {
                 </button>
               ))}
             </div>
+
+            {conversationMessages.length > 0 && (
+              <MessageHistory messages={conversationMessages} />
+            )}
 
             <ResultCard
               activeTab={activeTab}
@@ -498,6 +588,25 @@ function ResultCard({
         </button>
       </div>
     </div>
+  );
+}
+
+function MessageHistory({ messages }: { messages: ConversationMessage[] }) {
+  return (
+    <section className="message-history">
+      <div className="panel-title">
+        <span><Icon name="clock" size={16} /> Conversation history</span>
+        <span className="message-count">{messages.length} messages</span>
+      </div>
+      <div className="message-list">
+        {messages.map((message) => (
+          <article key={message.id} className={`message-bubble ${message.role.toLowerCase()}`}>
+            <span>{message.role}</span>
+            <p>{message.content}</p>
+          </article>
+        ))}
+      </div>
+    </section>
   );
 }
 

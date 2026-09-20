@@ -27,11 +27,15 @@ import com.backend.ai_agent.service.ConversationService;
 public class ConversationController {
     private final ConversationService conversationService;
 
-    public ConversationController(ConversationService conversationService) { this.conversationService = conversationService; }
+    public ConversationController(ConversationService conversationService) {
+        this.conversationService = conversationService;
+    }
 
     @PostMapping
-    public ResponseEntity<ConversationResponse> create(Authentication authentication, @RequestBody ConversationRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(conversationService.create(userId(authentication), request)));
+    public ResponseEntity<ConversationResponse> create(Authentication authentication,
+            @RequestBody ConversationRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(toResponse(conversationService.create(userId(authentication), request)));
     }
 
     @GetMapping
@@ -58,13 +62,17 @@ public class ConversationController {
 
     @GetMapping("/{id}/messages")
     public List<MessageResponse> findMessages(Authentication authentication, @PathVariable Long id) {
-        return conversationService.findMessages(userId(authentication), id).stream().map(MessageResponse::from).toList();
+        return conversationService.findMessages(userId(authentication), id).stream().map(MessageResponse::from)
+                .toList();
     }
 
-    private ConversationResponse toResponse(ConversationEntity conversation) { return ConversationResponse.from(conversation); }
+    private ConversationResponse toResponse(ConversationEntity conversation) {
+        return ConversationResponse.from(conversation);
+    }
 
     private Long userId(Authentication authentication) {
-        if (authentication != null && authentication.getPrincipal() instanceof Number number) return number.longValue();
+        if (authentication != null && authentication.getPrincipal() instanceof Number number)
+            return number.longValue();
         throw new UnauthorizedException("Phiên đăng nhập không hợp lệ");
     }
 }
