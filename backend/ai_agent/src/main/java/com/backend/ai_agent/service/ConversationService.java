@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.backend.ai_agent.dto.request.ConversationRequest;
 import com.backend.ai_agent.dto.request.ConversationUpdateRequest;
+import com.backend.ai_agent.dto.request.MessageRequest;
 import com.backend.ai_agent.entity.ConversationEntity;
 import com.backend.ai_agent.entity.DataSourceEntity;
 import com.backend.ai_agent.entity.MessageEntity;
@@ -86,6 +87,24 @@ public class ConversationService {
     public List<MessageEntity> findMessages(Long userId, Long conversationId) {
         ownedConversation(userId, conversationId);
         return messageRepository.findAllByConversationIdOrderByCreatedAtAsc(conversationId);
+    }
+
+    @Transactional
+    public MessageEntity addUserMessage(Long userId, Long conversationId, MessageRequest request) {
+        ConversationEntity conversation = ownedConversation(userId, conversationId);
+        if (!ACTIVE.equals(conversation.getStatus()))
+            throw new BadRequestException("Không thể gửi tin nhắn vào conversation đã archive");
+        if (request == null || request.content() == null || request.content().isBlank()
+                || request.content().trim().length() > 10000)
+            throw new BadRequestException("Nội dung tin nhắn phải từ 1 đến 10000 ký tự");
+        MessageEntity message = new MessageEntity();
+        message.setConversation(conversation);
+        message.setRole("USER");
+        message.setContent(request.content().trim());
+        MessageEntity saved = messageRepository.save(message);
+        conversation.setLastMessageAt(saved.getCreatedAt());
+        conversationRepository.save(conversation);
+        return saved;
     }
 
     private ConversationEntity ownedConversation(Long userId, Long id) {

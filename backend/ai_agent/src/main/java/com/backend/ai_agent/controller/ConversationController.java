@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.backend.ai_agent.dto.request.ConversationRequest;
 import com.backend.ai_agent.dto.request.ConversationUpdateRequest;
+import com.backend.ai_agent.dto.request.MessageRequest;
 import com.backend.ai_agent.dto.response.ConversationResponse;
 import com.backend.ai_agent.dto.response.MessageResponse;
 import com.backend.ai_agent.entity.ConversationEntity;
@@ -64,6 +65,11 @@ public class ConversationController {
     public List<MessageResponse> findMessages(Authentication authentication, @PathVariable Long id) {
         return conversationService.findMessages(userId(authentication), id).stream().map(MessageResponse::from)
                 .toList();
+    }
+
+    @PostMapping("/{id}/messages")
+    public ResponseEntity<MessageResponse> addMessage(Authentication authentication, @PathVariable Long id, @RequestBody MessageRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(MessageResponse.from(conversationService.addUserMessage(userId(authentication), id, request)));
     }
 
     private ConversationResponse toResponse(ConversationEntity conversation) {
