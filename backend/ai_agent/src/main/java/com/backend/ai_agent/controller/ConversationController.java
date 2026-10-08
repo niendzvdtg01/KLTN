@@ -17,19 +17,24 @@ import org.springframework.web.bind.annotation.RestController;
 import com.backend.ai_agent.dto.request.ConversationRequest;
 import com.backend.ai_agent.dto.request.ConversationUpdateRequest;
 import com.backend.ai_agent.dto.request.MessageRequest;
+import com.backend.ai_agent.dto.request.QueryRequest;
 import com.backend.ai_agent.dto.response.ConversationResponse;
 import com.backend.ai_agent.dto.response.MessageResponse;
+import com.backend.ai_agent.dto.response.QueryExecutionResponse;
 import com.backend.ai_agent.entity.ConversationEntity;
 import com.backend.ai_agent.exception.UnauthorizedException;
 import com.backend.ai_agent.service.ConversationService;
+import com.backend.ai_agent.service.QueryExecutionService;
 
 @RestController
 @RequestMapping("/v1/conversations")
 public class ConversationController {
     private final ConversationService conversationService;
+    private final QueryExecutionService queryExecutionService;
 
-    public ConversationController(ConversationService conversationService) {
+    public ConversationController(ConversationService conversationService, QueryExecutionService queryExecutionService) {
         this.conversationService = conversationService;
+        this.queryExecutionService = queryExecutionService;
     }
 
     @PostMapping
@@ -70,6 +75,12 @@ public class ConversationController {
     @PostMapping("/{id}/messages")
     public ResponseEntity<MessageResponse> addMessage(Authentication authentication, @PathVariable Long id, @RequestBody MessageRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(MessageResponse.from(conversationService.addUserMessage(userId(authentication), id, request)));
+    }
+
+    @PostMapping("/{id}/query")
+    public QueryExecutionResponse executeQuery(Authentication authentication, @PathVariable Long id,
+            @RequestBody QueryRequest request) {
+        return QueryExecutionResponse.from(queryExecutionService.execute(userId(authentication), id, request));
     }
 
     private ConversationResponse toResponse(ConversationEntity conversation) {
