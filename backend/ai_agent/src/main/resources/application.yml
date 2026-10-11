@@ -15,6 +15,17 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.MySQLDialect
 
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      repositories:
+        enabled: false
+
+app:
+  cache:
+    query-ttl-seconds: ${QUERY_CACHE_TTL_SECONDS:60}
+
 logging:
   level:
     org.flywaydb: DEBUG

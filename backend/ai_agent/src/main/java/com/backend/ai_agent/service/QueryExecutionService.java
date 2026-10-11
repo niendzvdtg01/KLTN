@@ -39,14 +39,16 @@ public class QueryExecutionService {
     private final ConversationRepository conversationRepository;
     private final QueryExecutionRepository queryExecutionRepository;
     private final SqlSafetyValidator sqlSafetyValidator;
+    private final QueryCacheService queryCacheService;
     private final JsonMapper objectMapper;
 
     public QueryExecutionService(ConversationRepository conversationRepository,
             QueryExecutionRepository queryExecutionRepository, SqlSafetyValidator sqlSafetyValidator,
-            JsonMapper objectMapper) {
+            QueryCacheService queryCacheService, JsonMapper objectMapper) {
         this.conversationRepository = conversationRepository;
         this.queryExecutionRepository = queryExecutionRepository;
         this.sqlSafetyValidator = sqlSafetyValidator;
+        this.queryCacheService = queryCacheService;
         this.objectMapper = objectMapper;
     }
 
@@ -71,14 +73,25 @@ public class QueryExecutionService {
         QueryExecutionEntity execution = new QueryExecutionEntity();
         execution.setConversation(conversation);
         execution.setQuestion(request.question() == null || request.question().isBlank()
-                ? sql : request.question().trim());
+                ? sql
+                : request.question().trim());
         execution.setGeneratedSql(sql);
         execution.setStatus("GENERATED");
         execution = queryExecutionRepository.save(execution);
 
+        QueryCacheService.CachedQueryResult cached = queryCacheService.get(source, sql);
+        if (cached != null) {
+            execution.setResultJson(cached.resultJson());
+            execution.setRowCount(cached.rowCount());
+            execution.setStatus("SUCCESS");
+            execution.setExecutionTimeMs(0L);
+            return queryExecutionRepository.save(execution);
+        }
+
         long startedAt = System.nanoTime();
         try (Connection connection = openConnection(source);
                 Statement statement = connection.createStatement()) {
+            connection.setReadOnly(true);
             execution.setStatus("RUNNING");
             statement.setMaxRows(MAX_ROWS);
             statement.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
@@ -87,6 +100,8 @@ public class QueryExecutionService {
                 execution.setRowCount(countRows(execution.getResultJson()));
             }
             execution.setStatus("SUCCESS");
+            queryCacheService.put(source, sql,
+                    new QueryCacheService.CachedQueryResult(execution.getResultJson(), execution.getRowCount()));
         } catch (SQLException | JacksonException exception) {
             execution.setStatus("FAILED");
             execution.setErrorMessage(safeError(exception));
@@ -134,9 +149,12 @@ public class QueryExecutionService {
     }
 
     private Object normalizeValue(Object value) {
-        if (value instanceof Timestamp timestamp) return timestamp.toLocalDateTime();
-        if (value instanceof java.sql.Date date) return date.toLocalDate();
-        if (value instanceof java.sql.Time time) return time.toLocalTime();
+        if (value instanceof Timestamp timestamp)
+            return timestamp.toLocalDateTime();
+        if (value instanceof java.sql.Date date)
+            return date.toLocalDate();
+        if (value instanceof java.sql.Time time)
+            return time.toLocalTime();
         if (value instanceof BigDecimal || value instanceof Number || value instanceof Boolean
                 || value instanceof String || value instanceof LocalDate || value instanceof LocalDateTime) {
             return value;
@@ -146,10 +164,12 @@ public class QueryExecutionService {
 
     private int countRows(String resultJson) {
         int marker = resultJson.indexOf("\"rows\":[");
-        if (marker < 0) return 0;
+        if (marker < 0)
+            return 0;
         int count = 0;
         for (int index = marker + 8; index < resultJson.length(); index++) {
-            if (resultJson.charAt(index) == '{') count++;
+            if (resultJson.charAt(index) == '{')
+                count++;
         }
         return count;
     }
