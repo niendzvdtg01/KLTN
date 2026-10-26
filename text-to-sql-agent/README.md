@@ -14,10 +14,10 @@ Mở <http://localhost:3000>.
 Frontend gọi backend qua biến môi trường:
 
 ```bash
-NEXT_PUBLIC_API_URL=http://localhost:8080 npm run dev
+NEXT_PUBLIC_API_URL=http://localhost:8081 npm run dev
 ```
 
-Nếu không đặt biến, frontend mặc định dùng `http://localhost:8080`.
+Nếu không đặt biến, frontend mặc định dùng `http://localhost:8081`.
 
 ## Scripts
 

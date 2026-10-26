@@ -16,4 +16,4 @@ export const emptyDataSourceForm: DataSourceInput = {
   password: "",
 };
 
-export type ResultTab = "table" | "sql";
+export type ResultTab = "table" | "chart" | "sql" | "insight";

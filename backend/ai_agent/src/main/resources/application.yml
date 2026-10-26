@@ -1,3 +1,6 @@
+server:
+  port: ${SERVER_PORT:8081}
+
 spring:
   flyway:
     enabled: true
@@ -23,6 +26,10 @@ spring:
         enabled: false
 
 app:
+  agent:
+    base-url: ${AGENT_BASE_URL:http://localhost:8001}
+    api-key: ${AGENT_API_KEY:mock-ai-agent-key}
+    max-correction-attempts: ${AGENT_MAX_CORRECTION_ATTEMPTS:2}
   cache:
     query-ttl-seconds: ${QUERY_CACHE_TTL_SECONDS:60}
 

@@ -57,8 +57,7 @@ public class QueryExecutionService {
         if (request == null || request.sql() == null || request.sql().isBlank()) {
             throw new BadRequestException("SQL không được để trống");
         }
-        String sql = request.sql().trim();
-        sqlSafetyValidator.validateReadOnly(sql);
+        String sql = sqlSafetyValidator.validateReadOnly(request.sql().trim());
 
         ConversationEntity conversation = conversationRepository.findByIdAndUserId(conversationId, userId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy conversation"));

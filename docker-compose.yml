@@ -41,6 +41,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql-db:3306/ai_agent?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
       SPRING_DATASOURCE_USERNAME: root
@@ -48,20 +50,36 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       QUERY_CACHE_TTL_SECONDS: ${QUERY_CACHE_TTL_SECONDS:-60}
+      AGENT_BASE_URL: ${AGENT_BASE_URL:-http://agent:8001}
+      AGENT_API_KEY: ${AGENT_API_KEY:-mock-ai-agent-key}
+      SERVER_PORT: 8081
     ports:
-      - "${BACKEND_PORT:-8080}:8080"
+      - "${BACKEND_PORT:-8081}:8081"
+
+  agent:
+    build:
+      context: ./agent
+    container_name: ai_agent_rules
+    restart: unless-stopped
+    env_file:
+      - ./agent/.env
+    environment:
+      AGENT_API_KEY: ${AGENT_API_KEY:-mock-ai-agent-key}
+      AGENT_CORS_ORIGINS: ${AGENT_CORS_ORIGINS:-http://localhost:3000}
+    ports:
+      - "${AGENT_PORT:-8001}:8001"
 
   frontend:
     build:
       context: ./text-to-sql-agent
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8081}
     container_name: ai_agent_frontend
     restart: unless-stopped
     depends_on:
       - backend
     environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8081}
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
 

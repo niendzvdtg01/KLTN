@@ -16,11 +16,13 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.backend.ai_agent.dto.request.ConversationRequest;
 import com.backend.ai_agent.dto.request.ConversationUpdateRequest;
+import com.backend.ai_agent.dto.request.FeedbackRequest;
 import com.backend.ai_agent.dto.request.MessageRequest;
 import com.backend.ai_agent.dto.request.QueryRequest;
 import com.backend.ai_agent.dto.response.ConversationResponse;
 import com.backend.ai_agent.dto.response.MessageResponse;
 import com.backend.ai_agent.dto.response.QueryExecutionResponse;
+import com.backend.ai_agent.dto.response.ChatResponse;
 import com.backend.ai_agent.entity.ConversationEntity;
 import com.backend.ai_agent.exception.UnauthorizedException;
 import com.backend.ai_agent.service.ConversationService;
@@ -73,8 +75,25 @@ public class ConversationController {
     }
 
     @PostMapping("/{id}/messages")
-    public ResponseEntity<MessageResponse> addMessage(Authentication authentication, @PathVariable Long id, @RequestBody MessageRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(MessageResponse.from(conversationService.addUserMessage(userId(authentication), id, request)));
+    public ResponseEntity<ChatResponse> addMessage(Authentication authentication, @PathVariable Long id, @RequestBody MessageRequest request) {
+        ConversationService.ChatResult result = conversationService.chat(userId(authentication), id, request);
+        var evaluation = result.evaluation();
+        // Prefer the data-aware chart from the evaluation step over the blind one from generation.
+        var chart = evaluation != null && evaluation.chart() != null ? evaluation.chart() : result.agent().chart();
+        return ResponseEntity.status(HttpStatus.CREATED).body(new ChatResponse(
+                MessageResponse.from(result.message()), QueryExecutionResponse.from(result.execution()),
+                chart == null ? "table" : chart.type(), chart == null ? null : chart.x(),
+                chart == null ? null : chart.y(), chart == null ? null : chart.title(),
+                evaluation == null ? null : evaluation.analysis(),
+                evaluation == null ? List.of() : evaluation.highlights(),
+                result.attempts(), result.agent().cache_hit()));
+    }
+
+    @PostMapping("/{id}/messages/{messageId}/feedback")
+    public ResponseEntity<Void> feedback(Authentication authentication, @PathVariable Long id,
+            @PathVariable Long messageId, @RequestBody FeedbackRequest request) {
+        conversationService.saveFeedback(userId(authentication), id, messageId, request);
+        return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 
     @PostMapping("/{id}/query")

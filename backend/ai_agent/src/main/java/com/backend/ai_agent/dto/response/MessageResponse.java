@@ -4,8 +4,9 @@ import java.time.LocalDateTime;
 
 import com.backend.ai_agent.entity.MessageEntity;
 
-public record MessageResponse(Long id, String role, String content, LocalDateTime createdAt) {
+public record MessageResponse(Long id, String role, String content, String metadata, LocalDateTime createdAt) {
     public static MessageResponse from(MessageEntity message) {
-        return new MessageResponse(message.getId(), message.getRole(), message.getContent(), message.getCreatedAt());
+        return new MessageResponse(message.getId(), message.getRole(), message.getContent(), message.getMetadata(),
+                message.getCreatedAt());
     }
 }

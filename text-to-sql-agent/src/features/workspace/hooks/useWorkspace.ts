@@ -40,7 +40,7 @@ export function useWorkspace() {
   const [selectedConversationId, setSelectedConversationId] = useState<number | null>(null);
   const [conversationMessages, setConversationMessages] = useState<ConversationMessage[]>([]);
   const [conversationBusy, setConversationBusy] = useState(false);
-  const { state, runQuery, setQuestion } = useTextToSql();
+  const { state, runQuery: runAgentQuery, setQuestion } = useTextToSql();
 
   const selectedSource = sources.find(({ id }) => id === selectedSourceId) ?? sources[0];
   const schema = useMemo(() => parseSchema(selectedSource?.schemaJson), [selectedSource]);
@@ -179,6 +179,19 @@ export function useWorkspace() {
   async function signOut() {
     await logout().catch(() => undefined);
     router.replace("/login");
+  }
+
+  async function runQuery() {
+    if (!selectedConversationId) {
+      setNotice("Hãy tạo hoặc chọn một conversation trước.");
+      return;
+    }
+    try {
+      const response = await runAgentQuery(selectedConversationId);
+      if (response) setConversationMessages(await listConversationMessages(selectedConversationId));
+    } catch (error) {
+      showError(error, "Không thể chạy câu hỏi.");
+    }
   }
 
   return {

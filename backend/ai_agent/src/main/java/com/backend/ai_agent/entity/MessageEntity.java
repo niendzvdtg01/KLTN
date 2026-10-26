@@ -30,6 +30,9 @@ public class MessageEntity {
     @Column(nullable = false, columnDefinition = "LONGTEXT")
     private String content;
 
+    @Column(columnDefinition = "LONGTEXT")
+    private String metadata;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -64,6 +67,14 @@ public class MessageEntity {
 
     public void setContent(String content) {
         this.content = content;
+    }
+
+    public String getMetadata() {
+        return metadata;
+    }
+
+    public void setMetadata(String metadata) {
+        this.metadata = metadata;
     }
 
     public LocalDateTime getCreatedAt() {

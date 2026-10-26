@@ -24,7 +24,7 @@ Chưa hoàn thiện:
 ## Kiến trúc
 
 ```text
-Browser -> Next.js :3000 -> Spring Boot :8080 -> MySQL :3306
+Browser -> Next.js :3000 -> Spring Boot :8081 -> MySQL :3306
                                       |
                                       +-> Redis :6379
 
@@ -36,7 +36,7 @@ Spring Boot -> Database bên ngoài do user khai báo
 ```mermaid
 flowchart LR
     Browser[Browser] --> Frontend[Next.js\n:3000]
-    Frontend -->|REST + JWT cookie| Backend[Spring Boot\n:8080]
+    Frontend -->|REST + JWT cookie| Backend[Spring Boot\n:8081]
     Backend --> AppDB[(MySQL\nApplication DB)]
     Backend --> Redis[(Redis\nQuery cache)]
     Backend -->|JDBC read-only| External[(Database\ndo user khai báo)]
@@ -89,7 +89,7 @@ docker compose up --build
 Địa chỉ mặc định:
 
 - Frontend: <http://localhost:3000>
-- Backend: <http://localhost:8080>
+- Backend: <http://localhost:8081>
 - MySQL từ host: `localhost:3308`
 - Redis từ host: `localhost:6379`
 
@@ -112,10 +112,16 @@ Chỉ dùng `down -v` khi chắc chắn không cần dữ liệu local nữa.
 | `MYSQL_ROOT_PASSWORD` | `1234` | Mật khẩu root MySQL |
 | `MYSQL_PORT` | `3308` | Port MySQL trên host |
 | `REDIS_PORT` | `6379` | Port Redis trên host |
-| `BACKEND_PORT` | `8080` | Port backend trên host |
+| `BACKEND_PORT` | `8081` | Port backend trên host |
 | `FRONTEND_PORT` | `3000` | Port frontend trên host |
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8080` | Backend URL của frontend |
-| `QUERY_CACHE_TTL_SECONDS` | `60` | TTL cache query |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8081` | Backend URL của frontend |
+| `QUERY_CACHE_TTL_SECONDS` | `60` | TTL cache query và context conversation |
+| `AGENT_BASE_URL` | `http://localhost:8001` | URL FastAPI OpenAI agent |
+| `AGENT_API_KEY` | `mock-ai-agent-key` | Shared key giữa backend và agent |
+| `OPENAI_API_KEY` | — | API key được agent dùng để gọi OpenAI |
+| `OPENAI_MODEL` | `gpt-4o-mini` | Model sinh kế hoạch SQL có cấu trúc |
+
+Khi chạy backend ngoài Docker, dùng `AGENT_BASE_URL=http://localhost:8001`. Khi chạy cả backend và agent bằng Compose, mặc định dùng `http://agent:8001`. Nếu backend ở Docker nhưng agent chạy trên host, dùng `AGENT_BASE_URL=http://host.docker.internal:8001`.
 
 Ví dụ:
 
@@ -149,7 +155,7 @@ npm run dev
 Nếu backend chạy ở địa chỉ khác:
 
 ```bash
-NEXT_PUBLIC_API_URL=http://localhost:8080 npm run dev
+NEXT_PUBLIC_API_URL=http://localhost:8081 npm run dev
 ```
 
 ## API
@@ -190,7 +196,7 @@ Các endpoint dưới đây, trừ endpoint public, yêu cầu JWT cookie sau kh
 | `PATCH` | `/v1/conversations/{id}` | Đổi title |
 | `DELETE` | `/v1/conversations/{id}` | Archive conversation |
 | `GET` | `/v1/conversations/{id}/messages` | Lấy lịch sử messages |
-| `POST` | `/v1/conversations/{id}/messages` | Lưu user message |
+| `POST` | `/v1/conversations/{id}/messages` | Gọi agent, chạy SQL read-only, lưu USER/ASSISTANT và trả chart metadata |
 | `POST` | `/v1/conversations/{id}/query` | Thực thi SQL read-only |
 
 Request mẫu:

@@ -4,6 +4,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
+import java.util.List;
+import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -16,6 +18,7 @@ import tools.jackson.databind.json.JsonMapper;
 @Service
 public class QueryCacheService {
     private static final String KEY_PREFIX = "ai-agent:query:";
+    private static final String CONVERSATION_PREFIX = "ai-agent:conversation:";
 
     private final StringRedisTemplate redisTemplate;
     private final JsonMapper jsonMapper;
@@ -43,6 +46,34 @@ public class QueryCacheService {
             redisTemplate.opsForValue().set(key(source, sql), jsonMapper.writeValueAsString(result), ttl);
         } catch (RuntimeException ignored) {
             // Cache is best effort and may be unavailable during development/deployment.
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<Map<String, String>> getConversation(Long conversationId) {
+        try {
+            String value = redisTemplate.opsForValue().get(CONVERSATION_PREFIX + conversationId);
+            if (value == null) return null;
+            return (List<Map<String, String>>) (List<?>) jsonMapper.readValue(value, List.class);
+        } catch (RuntimeException exception) {
+            return null;
+        }
+    }
+
+    public void putConversation(Long conversationId, List<Map<String, String>> messages) {
+        try {
+            redisTemplate.opsForValue().set(CONVERSATION_PREFIX + conversationId,
+                    jsonMapper.writeValueAsString(messages), ttl);
+        } catch (RuntimeException ignored) {
+            // Conversation cache is best effort.
+        }
+    }
+
+    public void evictConversation(Long conversationId) {
+        try {
+            redisTemplate.delete(CONVERSATION_PREFIX + conversationId);
+        } catch (RuntimeException ignored) {
+            // Redis outage must not block chat persistence.
         }
     }
 

@@ -6,7 +6,7 @@ class UnsafeSqlError(ValueError):
 
 
 _FORBIDDEN = re.compile(
-    r"\b(insert|update|delete|drop|alter|truncate|create|replace|merge|grant|revoke|call|execute|outfile|load_file)\b",
+    r"\b(insert|update|delete|drop|alter|truncate|create|replace|merge|grant|revoke|call|execute|outfile|load_file|dumpfile|lock|unlock|set|use|handler|into)\b",
     re.IGNORECASE,
 )
 
@@ -26,4 +26,10 @@ def validate_read_only_sql(sql: str) -> str:
     if match:
         raise UnsafeSqlError(f"Forbidden SQL operation: {match.group(1).upper()}")
     return statement + ";"
+
+
+def quote_identifier(identifier: str) -> str:
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", identifier):
+        raise UnsafeSqlError(f"Invalid identifier: {identifier}")
+    return identifier
 

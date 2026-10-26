@@ -11,13 +11,19 @@ public class SqlSafetyValidator {
             "\\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|RENAME|GRANT|REVOKE|CALL|EXEC|SET|USE|LOAD|OUTFILE|DUMPFILE)\\b",
             Pattern.CASE_INSENSITIVE);
 
-    public void validateReadOnly(String sql) {
+    public String validateReadOnly(String sql) {
         if (sql == null || sql.isBlank())
             throw new BadRequestException("SQL không được để trống");
-        String value = sql.trim(), upper = value.toUpperCase(Locale.ROOT);
-        if (value.length() > 100000 || value.contains(";") || !(upper.startsWith("SELECT") || upper.startsWith("WITH"))
+        String value = sql.trim();
+        // The agent normalizes output to a single trailing ';'. Allow that one, forbid any others.
+        if (value.endsWith(";"))
+            value = value.substring(0, value.length() - 1).trim();
+        String upper = value.toUpperCase(Locale.ROOT);
+        if (value.isEmpty() || value.length() > 100000 || value.contains(";")
+                || !(upper.startsWith("SELECT") || upper.startsWith("WITH"))
                 || FORBIDDEN.matcher(value).find() || value.contains("--") || value.contains("/*")
                 || value.contains("*/"))
             throw new BadRequestException("Chỉ cho phép một câu SQL đọc dữ liệu (SELECT/WITH)");
+        return value;
     }
 }

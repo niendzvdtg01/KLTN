@@ -1,9 +1,18 @@
+import pytest
 from fastapi.testclient import TestClient
 
+from app import main
 from app.main import app
+from app.provider import MockAgentProvider
 
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def force_mock_provider(monkeypatch):
+    """Pin the Mock provider so tests are deterministic regardless of OPENAI_API_KEY."""
+    monkeypatch.setattr(main, "provider", MockAgentProvider())
 
 
 def test_health_does_not_require_key() -> None:

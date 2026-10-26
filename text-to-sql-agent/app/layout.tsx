@@ -1,9 +1,13 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Queryly — Ask your data",
   description: "A clean Text-to-SQL workspace for exploring your data.",
+};
+
+export const viewport: Viewport = {
+  themeColor: "#F5A623",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
