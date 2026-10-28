@@ -7,6 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
 from .models import (
+    AgentStepRequest,
+    AgentStepResponse,
     EvaluateRequest,
     EvaluateResponse,
     GenerateSqlRequest,
@@ -77,6 +79,22 @@ def generate_sql(request: GenerateSqlRequest) -> GenerateSqlResponse:
 def chat(request: GenerateSqlRequest) -> GenerateSqlResponse:
     """Alias suitable for the frontend/backend chat flow."""
     return generate_sql(request)
+
+
+@app.post(
+    "/v1/agent/step",
+    response_model=AgentStepResponse,
+    dependencies=[Depends(require_api_key)],
+)
+def step(request: AgentStepRequest) -> AgentStepResponse:
+    """One iteration of the agent loop: the backend executes the chosen tool and calls back with the result."""
+    try:
+        return provider.step(request)
+    except Exception as error:
+        # Do not expose provider responses, prompts, or API credentials.
+        if isinstance(error, (ValueError, RuntimeError)):
+            raise HTTPException(status_code=502, detail=str(error)[:500]) from error
+        raise
 
 
 @app.post(

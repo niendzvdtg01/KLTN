@@ -1,6 +1,7 @@
 package com.backend.ai_agent.dto.response;
 
 import java.util.List;
+import java.util.Map;
 
 public record ChatResponse(
         MessageResponse message,
@@ -12,5 +13,6 @@ public record ChatResponse(
         String evaluation,
         List<String> highlights,
         int attempts,
-        boolean cacheHit) {
+        boolean cacheHit,
+        List<Map<String, Object>> steps) {
 }

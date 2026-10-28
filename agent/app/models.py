@@ -84,6 +84,60 @@ class GenerateSqlResponse(BaseModel):
     cache_hit: bool = False
 
 
+AgentTool = Literal["describe_table", "sample_values", "run_sql"]
+
+
+class AgentStepRecord(BaseModel):
+    """One already-executed step of the agent loop, replayed so the stateless agent can continue."""
+
+    tool: str = Field(..., max_length=40)
+    thought: str | None = Field(default=None, max_length=2_000)
+    args: dict[str, Any] = Field(default_factory=dict)
+    ok: bool = True
+    # Tool output (truncated by the backend) or the error the tool/SQL raised.
+    result: Any = None
+    error: str | None = Field(default=None, max_length=4_000)
+
+
+class AgentStepRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    question: str = Field(..., min_length=1, max_length=2_000)
+    schema_: list[TableSchema] = Field(default_factory=list, max_length=100)
+    conversation: list[dict[str, str]] = Field(default_factory=list, max_length=20)
+    examples: list[SqlExample] = Field(default_factory=list, max_length=10)
+    steps: list[AgentStepRecord] = Field(default_factory=list, max_length=30)
+    remaining_steps: int = Field(default=1, ge=1, le=30)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_schema_input(cls, value: Any) -> Any:
+        if isinstance(value, dict) and "schema" in value and "schema_" not in value:
+            value = {**value, "schema_": value["schema"]}
+        return value
+
+
+class AgentStepResponse(BaseModel):
+    """Next decision of the agent: call a tool, or finish with the final read-only SQL."""
+
+    action: Literal["tool", "final"]
+    thought: str = Field(..., max_length=2_000)
+    tool: AgentTool | None = None
+    table: str | None = None
+    column: str | None = None
+    sql: str | None = Field(default=None, max_length=100_000)
+    title: str | None = Field(default=None, max_length=120)
+    chart: ChartSpec | None = None
+
+    @model_validator(mode="after")
+    def check_action(self) -> "AgentStepResponse":
+        if self.action == "tool" and self.tool is None:
+            raise ValueError("tool action requires a tool name")
+        if self.action == "final" and not (self.sql and self.sql.strip()):
+            raise ValueError("final action requires sql")
+        return self
+
+
 class HealthResponse(BaseModel):
     status: str
     provider: str

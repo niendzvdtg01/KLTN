@@ -39,3 +39,24 @@ def test_generate_sql_returns_read_only_query() -> None:
     assert response.json()["sql"] == "SELECT COUNT(*) AS total_rows FROM orders;"
     assert response.json()["read_only"] is True
 
+
+
+def test_step_calls_tool_then_finishes() -> None:
+    body = {"question": "đếm đơn hàng", "schema": [{"name": "orders", "columns": ["id"]}], "remaining_steps": 5}
+    first = client.post("/v1/agent/step", headers={"X-API-Key": "mock-ai-agent-key"}, json=body)
+    assert first.status_code == 200
+    assert first.json()["action"] == "tool"
+    assert first.json()["tool"] == "describe_table"
+
+    body["steps"] = [{"tool": "describe_table", "args": {"table": "orders"}, "ok": True, "result": [{"name": "id"}]}]
+    second = client.post("/v1/agent/step", headers={"X-API-Key": "mock-ai-agent-key"}, json=body)
+    assert second.status_code == 200
+    assert second.json()["action"] == "final"
+    assert second.json()["sql"] == "SELECT COUNT(*) AS total_rows FROM orders;"
+
+
+def test_step_requires_sql_on_final() -> None:
+    from app.models import AgentStepResponse
+
+    with pytest.raises(ValueError):
+        AgentStepResponse(action="final", thought="x")

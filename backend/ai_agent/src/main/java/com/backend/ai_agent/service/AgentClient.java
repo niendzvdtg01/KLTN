@@ -63,6 +63,32 @@ public class AgentClient {
     }
 
     /**
+     * Asks the agent for its next action given every step taken so far. Failures (agent down,
+     * timeout, invalid decision) are thrown as {@link AgentUnavailableException} so the caller can retry.
+     */
+    public AgentStep step(String question, String schemaJson, List<Map<String, String>> conversation,
+            List<Map<String, String>> examples, List<Map<String, Object>> steps, int remainingSteps) {
+        try {
+            Map<String, Object> schema = schemaJson == null || schemaJson.isBlank()
+                    ? Map.of("tables", List.of())
+                    : mapper.readValue(schemaJson, Map.class);
+            StepRequest body = new StepRequest(question, normalizeTables(schema.get("tables")), conversation,
+                    examples == null ? List.of() : examples, steps, remainingSteps);
+            AgentStep result = client.post().uri("/v1/agent/step")
+                    .header("X-API-Key", apiKey).contentType(MediaType.APPLICATION_JSON)
+                    .body(mapper.writeValueAsString(body)).retrieve().body(AgentStep.class);
+            if (result == null || result.action() == null) {
+                throw new AgentUnavailableException("AI agent trả về quyết định rỗng");
+            }
+            return result;
+        } catch (AgentUnavailableException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw new AgentUnavailableException("Không thể kết nối AI agent: " + safeMessage(exception));
+        }
+    }
+
+    /**
      * Data-aware evaluation of an executed result set. Best-effort: returns null on any failure so a
      * successful query is never lost just because the analysis step could not run.
      */
@@ -104,9 +130,19 @@ public class AgentClient {
 
     public record AgentRequest(String question, Object schema, List<Map<String, String>> conversation, int max_rows,
             String previous_sql, String error, List<Map<String, String>> examples) {}
+    public record StepRequest(String question, Object schema, List<Map<String, String>> conversation,
+            List<Map<String, String>> examples, List<Map<String, Object>> steps, int remaining_steps) {}
+    public record AgentStep(String action, String thought, String tool, String table, String column, String sql,
+            String title, Chart chart) {}
     public record EvaluateRequest(String question, String sql, Object columns, Object rows, int row_count) {}
     public record Chart(String type, String x, String y, List<String> series, String title) {}
     public record AgentResult(String title, String sql, String provider, String model, boolean read_only,
             String rule, Chart chart, boolean cache_hit) {}
     public record Evaluation(String analysis, List<String> highlights, Chart chart) {}
+
+    public static class AgentUnavailableException extends RuntimeException {
+        public AgentUnavailableException(String message) {
+            super(message);
+        }
+    }
 }

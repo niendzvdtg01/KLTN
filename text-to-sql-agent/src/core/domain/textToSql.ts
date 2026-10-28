@@ -16,4 +16,9 @@ export type QueryResult = {
   attempts?: number;
 };
 
-export type TextToSqlState = { question: string; isLoading: boolean; result: QueryResult | null };
+export type AgentStepStatus = "running" | "ok" | "error";
+export type AgentStepItem = { step: number; tool: string; thought: string | null; detail: string | null; status: AgentStepStatus };
+export type AgentRetryNotice = { attempt: number; maxAttempts: number; message: string; action: string };
+export type AgentProgress = { steps: AgentStepItem[]; retry: AgentRetryNotice | null; failure: string | null };
+
+export type TextToSqlState = { question: string; isLoading: boolean; result: QueryResult | null; progress: AgentProgress | null };

@@ -7,6 +7,8 @@ from openai import OpenAI
 from .config import Settings
 from .models import (
     AgentPlan,
+    AgentStepRequest,
+    AgentStepResponse,
     ChartSpec,
     EvaluateRequest,
     EvaluateResponse,
@@ -57,6 +59,50 @@ _EVAL_FORMAT = {
 }
 
 
+_NULLABLE_STRING = {"anyOf": [{"type": "string"}, {"type": "null"}]}
+
+_STEP_FORMAT = {
+    "type": "json_schema",
+    "name": "agent_step",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "action": {"type": "string", "enum": ["tool", "final"]},
+            "thought": {"type": "string"},
+            "tool": {"anyOf": [{"type": "string", "enum": ["describe_table", "sample_values", "run_sql"]}, {"type": "null"}]},
+            "table": _NULLABLE_STRING,
+            "column": _NULLABLE_STRING,
+            "sql": _NULLABLE_STRING,
+            "title": _NULLABLE_STRING,
+            "chart": {"anyOf": [_CHART_SCHEMA, {"type": "null"}]},
+        },
+        "required": ["action", "thought", "tool", "table", "column", "sql", "title", "chart"],
+    },
+}
+
+_STEP_INSTRUCTIONS = (
+    "You are an autonomous Text-to-SQL agent working against a read-only MySQL database. "
+    "Each turn you choose ONE next action and return JSON matching the schema.\n"
+    "Tools (action='tool'):\n"
+    "- describe_table(table): column names, types and nullability of one table.\n"
+    "- sample_values(table, column): up to 20 distinct real values of a column. Use it before filtering on "
+    "text/enum values whose exact spelling you do not know (status, category, country...).\n"
+    "- run_sql(sql): run an exploratory read-only query and see up to 20 rows. Use it to check joins, "
+    "date ranges or whether a filter matches anything.\n"
+    "Finish (action='final'): return 'title', exactly one read-only 'sql' (SELECT/WITH, no comments, no "
+    "multiple statements) and a 'chart' whose x/y are column aliases selected by that SQL.\n"
+    "Rules: use only tables/columns from the schema, never invent identifiers. Work efficiently: if the "
+    "schema already makes the answer obvious, finish immediately. 'steps' lists what you already did with "
+    "each tool result or error. When a step has ok=false, read the error, explain the cause in 'thought' "
+    "and fix it - never repeat the same failing call. If a query returns 0 rows unexpectedly, check the "
+    "filter values with sample_values. When remaining_steps is 1 you MUST return action='final'. "
+    "'thought' is one short sentence shown to the user, in the same language as the question. "
+    "Set unused fields to null. If 'accepted_examples' is given, follow their style."
+)
+
+
 @dataclass
 class GeneratedQuery:
     title: str
@@ -88,6 +134,26 @@ class OpenAIAgentProvider:
         sql = validate_read_only_sql(plan.sql)
         self._validate_schema_scope(sql, request.schema_)
         return GeneratedQuery(plan.title, sql, "openai_structured", plan.chart)
+
+    def step(self, request: AgentStepRequest) -> AgentStepResponse:
+        if self.client is None:
+            raise RuntimeError("OPENAI_API_KEY chưa được cấu hình")
+        if not request.schema_:
+            raise UnsafeSqlError("Không có schema được đồng bộ để sinh SQL")
+        payload: dict = {
+            "question": request.question,
+            "schema": [table.model_dump() for table in request.schema_],
+            "conversation": request.conversation[-20:],
+            "steps": [step.model_dump(exclude_none=True) for step in request.steps],
+            "remaining_steps": request.remaining_steps,
+        }
+        if request.examples:
+            payload["accepted_examples"] = [{"question": e.question, "sql": e.sql} for e in request.examples]
+        data = self._complete(_STEP_INSTRUCTIONS, json.dumps(payload, ensure_ascii=False, default=str), _STEP_FORMAT)
+        decision = AgentStepResponse.model_validate(data)
+        if request.remaining_steps <= 1 and decision.action != "final":
+            raise RuntimeError("Agent không kết thúc khi đã hết số bước cho phép")
+        return decision
 
     def evaluate(self, request: EvaluateRequest) -> EvaluateResponse:
         if self.client is None:
@@ -199,6 +265,14 @@ class MockAgentProvider:
         table_name = quote_identifier(table.name)
         sql = validate_read_only_sql(f"SELECT COUNT(*) AS total_rows FROM {table_name};")
         return GeneratedQuery("Schema sample", sql, "mock_disabled", ChartSpec(type="table", title="Schema sample"))
+
+    def step(self, request: AgentStepRequest) -> AgentStepResponse:
+        table = request.schema_[0].name
+        if not request.steps:
+            return AgentStepResponse(action="tool", thought=f"Xem cấu trúc bảng {table}", tool="describe_table", table=table)
+        sql = validate_read_only_sql(f"SELECT COUNT(*) AS total_rows FROM {quote_identifier(table)};")
+        return AgentStepResponse(action="final", thought="Đếm số dòng", sql=sql, title="Schema sample",
+                                 chart=ChartSpec(type="number", y="total_rows", title="Schema sample"))
 
     def evaluate(self, request: EvaluateRequest) -> EvaluateResponse:
         return EvaluateResponse(

@@ -40,7 +40,7 @@ public class DataSourceService {
 
     @Transactional
     public DataSourceEntity create(Long ownerId, DataSourceRequest request) {
-        validate(request, true);
+        validate(request);
         String name = request.name().trim();
         if (dataSourceRepository.existsByOwnerIdAndNameIgnoreCase(ownerId, name)) {
             throw new ConflictException("Tên data source đã tồn tại");
@@ -68,7 +68,7 @@ public class DataSourceService {
 
     @Transactional
     public DataSourceEntity update(Long ownerId, Long id, DataSourceRequest request) {
-        validate(request, false);
+        validate(request);
         DataSourceEntity source = ownedSource(ownerId, id);
         String name = request.name().trim();
         if (dataSourceRepository.existsByOwnerIdAndNameIgnoreCaseAndIdNot(ownerId, name, id)) {
@@ -126,23 +126,25 @@ public class DataSourceService {
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy data source"));
     }
 
-    private void apply(DataSourceEntity source, DataSourceRequest request, boolean passwordRequired) {
+    private void apply(DataSourceEntity source, DataSourceRequest request, boolean creating) {
         source.setName(request.name().trim());
         source.setDbType(normalizeDbType(request.dbType()));
         source.setHost(request.host().trim());
         source.setPort(request.port());
         source.setDatabaseName(request.databaseName().trim());
         source.setUsername(request.username().trim());
-        if (passwordRequired || request.password() != null && !request.password().isBlank()) {
+        // Password is optional (e.g. public read-only databases); on update a blank value keeps the stored one.
+        if (creating) {
+            source.setPassword(request.password() == null ? "" : request.password());
+        } else if (request.password() != null && !request.password().isBlank()) {
             source.setPassword(request.password());
         }
     }
 
-    private void validate(DataSourceRequest request, boolean passwordRequired) {
+    private void validate(DataSourceRequest request) {
         if (request == null || isBlank(request.name()) || isBlank(request.dbType())
                 || isBlank(request.host()) || request.port() == null || request.port() < 1 || request.port() > 65535
-                || isBlank(request.databaseName()) || isBlank(request.username())
-                || passwordRequired && isBlank(request.password())) {
+                || isBlank(request.databaseName()) || isBlank(request.username())) {
             throw new BadRequestException("Thông tin data source không hợp lệ");
         }
         if (!"MYSQL".equals(normalizeDbType(request.dbType()))) {

@@ -6,7 +6,8 @@ import type { QueryResult } from "@/src/core/domain/textToSql";
 import type { ResultTab } from "../constants";
 import type { WorkspaceModel } from "../hooks/useWorkspace";
 import { suggestions } from "../constants";
-import { ChartView } from "./ChartView";
+import { AgentTimeline } from "./AgentTimeline";
+import { ChartCard } from "./ChartView";
 import { DataEvaluation } from "./DataEvaluation";
 import { FeedbackBar } from "./FeedbackBar";
 
@@ -22,8 +23,12 @@ export function QueryPanel({ model }: { model: WorkspaceModel }) {
     </div>
     <div className="suggestions"><span>Gợi ý</span>{suggestions.map((suggestion) => <button key={suggestion} onClick={() => model.setQuestion(suggestion)}>{suggestion}<Icon name="arrow-up-right" size={14} /></button>)}</div>
     {conversationMessages.length > 0 && <MessageHistory messages={conversationMessages} />}
-    {state.result
-      ? <ResultCard activeTab={model.activeTab} onTabChange={model.setActiveTab} result={state.result} conversationId={model.selectedConversationId} />
+    {state.progress && <AgentTimeline key={state.result?.queryId ?? "running"} progress={state.progress} isLoading={state.isLoading} />}
+    {state.result && !state.isLoading
+      ? <>
+        <ResultCard activeTab={model.activeTab} onTabChange={model.setActiveTab} result={state.result} conversationId={model.selectedConversationId} />
+        <ChartCard key={state.result.queryId ?? state.result.sql} result={state.result} />
+      </>
       : <EmptyResult />}
   </section>;
 }
@@ -33,12 +38,11 @@ function EmptyResult() {
 }
 
 function MessageHistory({ messages }: { messages: ConversationMessage[] }) {
-  return <section className="message-history"><div className="panel-title"><span><Icon name="clock" size={16} /> Lịch sử hội thoại</span><span className="message-count">{messages.length} tin nhắn</span></div><div className="message-list">{messages.map((message) => <article key={message.id} className={`message-bubble ${message.role.toLowerCase()}`}><span>{message.role}</span><p>{message.content}</p></article>)}</div></section>;
+  return <section className="message-history"><div className="panel-title"><span><Icon name="clock" size={16} /> Lịch sử hội thoại</span><span className="message-count">{messages.filter((message) => message.role !== "TOOL").length} tin nhắn</span></div><div className="message-list">{messages.filter((message) => message.role !== "TOOL").map((message) => <article key={message.id} className={`message-bubble ${message.role.toLowerCase()}`}><span>{message.role}</span><p>{message.content}</p></article>)}</div></section>;
 }
 
-const TABS: { key: ResultTab; label: string; icon: "table" | "chart" | "code" | "trend" }[] = [
+const TABS: { key: ResultTab; label: string; icon: "table" | "code" | "trend" }[] = [
   { key: "table", label: "Bảng", icon: "table" },
-  { key: "chart", label: "Biểu đồ", icon: "chart" },
   { key: "sql", label: "SQL", icon: "code" },
   { key: "insight", label: "Đánh giá", icon: "trend" },
 ];
@@ -54,7 +58,6 @@ function ResultCard({ activeTab, onTabChange, result, conversationId }: { active
     <div className="tabs">{TABS.map((tab) => <button key={tab.key} className={activeTab === tab.key ? "tab active" : "tab"} onClick={() => onTabChange(tab.key)}><Icon name={tab.icon} size={14} /> {tab.label}</button>)}</div>
     <div className="tab-body">
       {activeTab === "table" && <ResultTable rows={result.rows} />}
-      {activeTab === "chart" && <ChartView result={result} />}
       {activeTab === "sql" && <pre className="sql-view">{result.sql}</pre>}
       {activeTab === "insight" && <DataEvaluation evaluation={result.evaluation} highlights={result.highlights} />}
     </div>

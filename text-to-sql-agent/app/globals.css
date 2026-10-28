@@ -114,10 +114,46 @@ tbody tr:hover { background: var(--soft); }
 .empty-result h2 { margin: 6px 0 0; font-size: 17px; color: var(--ink); }
 .empty-result p { margin: 0; font-size: 12px; max-width: 320px; }
 
+/* ---------------- Agent timeline ---------------- */
+.agent-timeline { background: var(--panel); border: 1px solid var(--line); border-radius: 13px; margin-bottom: 18px; overflow: hidden; }
+.agent-timeline-head { width: 100%; display: flex; align-items: center; gap: 9px; padding: 13px 18px; font-size: 12px; color: var(--ink); text-align: left; }
+.agent-timeline-head:disabled { cursor: default; }
+.agent-pulse, .agent-done { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; background: var(--amber-soft); color: var(--amber-dark); }
+.agent-pulse { animation: agent-pulse 1.2s ease-in-out infinite; }
+@keyframes agent-pulse { 50% { opacity: .45; } }
+.agent-chevron { margin-left: auto; color: var(--muted); transition: transform .15s; }
+.agent-chevron.open { transform: rotate(180deg); }
+.agent-alert { display: flex; gap: 10px; margin: 0 18px 12px; padding: 10px 12px; border-radius: 9px; font-size: 12px; }
+.agent-alert svg { flex-shrink: 0; margin-top: 2px; }
+.agent-alert p { margin: 3px 0; color: #5d5641; word-break: break-word; }
+.agent-alert small { color: var(--muted); font-size: 11px; }
+.agent-alert.warn { background: var(--amber-soft); border: 1px solid #f1d79a; color: var(--amber-dark); }
+.agent-alert.error { background: #fbeee9; border: 1px solid #efc9bb; color: var(--danger); }
+.agent-steps { list-style: none; margin: 0; padding: 4px 18px 14px; display: grid; gap: 0; border-top: 1px solid var(--line); }
+.agent-step { position: relative; display: grid; grid-template-columns: 14px 1fr; gap: 10px; padding: 10px 0 4px; }
+.agent-step:not(:last-child)::after { content: ""; position: absolute; left: 4px; top: 24px; bottom: -8px; width: 2px; background: var(--line); }
+.agent-step-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 3px; background: var(--success); }
+.agent-step.running .agent-step-dot { background: var(--amber); animation: agent-pulse 1s ease-in-out infinite; }
+.agent-step.error .agent-step-dot { background: var(--danger); }
+.agent-step-title { font-size: 12px; font-weight: 700; color: var(--ink); display: flex; align-items: center; gap: 8px; }
+.agent-step-badge { font-size: 10px; font-weight: 600; color: var(--danger); background: #fbeee9; border-radius: 999px; padding: 2px 8px; }
+.agent-step-thought { margin: 3px 0 0; font-size: 12px; color: #6a5d3f; }
+.agent-step-detail { display: block; margin-top: 5px; padding: 6px 9px; border-radius: 7px; background: var(--amber-tint); color: #6a5d3f; font: 11px/1.6 "SFMono-Regular", Consolas, monospace; white-space: pre-wrap; word-break: break-word; }
+.agent-step.error .agent-step-detail { background: #fbeee9; color: var(--danger); }
+
 /* ---------------- Chart view ---------------- */
-.chart-view { padding: 18px 14px 8px; }
+.chart-card { margin-top: 18px; }
+.chart-caption { margin: 5px 0 0; font-size: 11px; color: var(--muted); }
+.chart-switch { display: flex; padding: 3px; gap: 2px; background: var(--soft); border: 1px solid var(--line); border-radius: 9px; flex-shrink: 0; }
+.chart-switch button { font-size: 11px; color: var(--muted); padding: 5px 11px; border-radius: 7px; }
+.chart-switch button:hover { color: var(--amber-dark); }
+.chart-switch button.active { background: #fff; color: var(--amber-dark); font-weight: 700; box-shadow: 0 1px 3px #9a700720; }
+.chart-view { padding: 4px 14px 12px; border-top: 1px solid var(--line); }
+.chart-note { display: flex; align-items: center; gap: 6px; padding: 10px 20px; border-top: 1px solid var(--line); font-size: 10px; color: var(--muted); }
+.kpi-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 28px; padding: 10px 20px 26px; border-top: 1px solid var(--line); }
+.kpi-grid .kpi-meta { flex-basis: 100%; text-align: center; }
 .chart-empty, .evaluation-empty { padding: 42px 20px; text-align: center; color: var(--muted); font-size: 12px; }
-.kpi-card { display: grid; justify-items: center; gap: 6px; padding: 42px 20px; }
+.kpi-card { display: grid; justify-items: center; gap: 6px; padding: 22px 12px 4px; }
 .kpi-label { font-size: 11px; letter-spacing: .5px; text-transform: uppercase; color: var(--muted); font-weight: 700; }
 .kpi-value { font-size: 52px; line-height: 1; letter-spacing: -2px; color: var(--amber-dark); font-variant-numeric: tabular-nums; }
 .kpi-meta { font-size: 11px; color: var(--muted); }
