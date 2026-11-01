@@ -32,19 +32,22 @@ User đăng nhập
   - `exception/`: exception nghiệp vụ và response lỗi chung.
 - `backend/ai_agent/src/main/resources/db/migration/`: Flyway migrations.
 - `backend/ai_agent/src/main/resources/application.yml`: datasource, Flyway, JPA và logging.
-- `text-to-sql-agent/`: frontend/ứng dụng riêng; phải đọc `text-to-sql-agent/AGENTS.md` trước khi sửa phần này.
+- `agent/`: dịch vụ AI agent FastAPI + OpenAI (stateless, không kết nối database của user).
+- `text-to-sql-agent/`: frontend Next.js 16; phải đọc `text-to-sql-agent/AGENTS.md` trước khi sửa phần này.
+- `docs/`: tài liệu chi tiết – `architecture.md`, `api.md`, `database.md`. Cập nhật docs khi đổi API, schema hoặc luồng agent.
 
-## 3. Trạng thái backend hiện tại
+## 3. Trạng thái hiện tại
 
-Backend hiện đã có nền tảng:
+Đã triển khai:
 
-- User registration/update/login.
-- JWT authentication.
-- Global exception handling.
-- Flyway với MySQL.
-- Các bảng nền tảng `users`, `data_sources`, `conversations`, `messages`, `query_executions`.
+- User registration/update/login, JWT trong cookie `access_cookie`, global exception handling.
+- Data source CRUD theo ownership, đa engine qua catalog `db_engines` (MySQL, MariaDB, PostgreSQL, SQL Server, Oracle), test kết nối (đã lưu và nháp), sync schema.
+- Conversation/message CRUD, archive.
+- Agent loop nhiều bước (`ConversationService.chat`) gọi agent `/v1/agent/step`, tool `describe_table` / `sample_values` / `run_sql`, tự sửa lỗi và retry, streaming SSE, đánh giá kết quả `/v1/agent/evaluate`.
+- SQL safety validator, query execution read-only, Redis cache.
+- Feedback UP/DOWN và few-shot memory từ câu trả lời được UP.
 
-Các entity/service/controller cho `data_sources`, `conversations`, `messages` và `query_executions` có thể chưa được triển khai đầy đủ. Khi bổ sung, giữ đúng mô hình nghiệp vụ trong tài liệu này.
+Chưa làm / hạn chế: JWT secret sinh ngẫu nhiên mỗi lần khởi động, password data source chưa mã hóa, status `BLOCKED`/`CONNECTION_ERROR`/`SYNCING` chưa được dùng, chưa có pagination. Xem `README.md` mục 10.
 
 ## 4. Mô hình dữ liệu
 
@@ -121,11 +124,17 @@ Query execution chỉ được chạy SQL read-only. Chặn tối thiểu `INSER
 9. Nếu migration đã fail nhưng có dữ liệu cần giữ, kiểm tra `flyway_schema_history`, schema hiện tại và dùng `flyway repair` sau khi dọn phần thay đổi dở dang.
 10. Checksum âm trong `flyway_schema_history` là bình thường vì checksum là signed integer. Chỉ xử lý khi Flyway báo `checksum mismatch`.
 
-### V1, V2, V3 hiện tại
+### Migration hiện có
 
 - `V1__create_primary_tables.sql`: tạo `data_sources`, `conversations`, `messages`, `query_executions`.
 - `V2__create_users.sql`: tạo `users`.
 - `V3__alter_data_conversations.sql`: thêm ownership/status và đổi quan hệ data source với conversation.
+- `V4__rename_conversation_status.sql`: đổi cột `usstat` (đặt nhầm ở V3) thành `status`.
+- `V5__feedback_and_message_metadata.sql`: `messages.metadata` và bảng `message_feedback`.
+- `V6__create_db_engines.sql`: catalog `db_engines` + seed 5 engine.
+- `V7__data_source_connection_settings.sql`: cấu hình kết nối theo data source, FK `db_type`, bảng `data_source_properties`.
+
+Migration tiếp theo bắt đầu từ `V8__...`. Chi tiết bảng: `docs/database.md`.
 
 V3 hiện giả định database dev chưa có dữ liệu cần backfill trong `data_sources` và `conversations`, vì thêm `owner_id`/`user_id` là `NOT NULL`. Nếu cần migrate dữ liệu cũ, phải tạo migration riêng có chiến lược user mặc định/backfill rõ ràng, không đoán owner.
 
@@ -148,31 +157,40 @@ Khi xử lý `POST /conversations/{id}/messages`:
 
 Không cho phép client truyền tùy ý `owner_id`, `user_id`, `created_at`, `generated_sql` hoặc status để bypass nghiệp vụ.
 
-## 7. API định hướng
+## 7. API
 
-Data sources:
+Mọi endpoint có tiền tố `/v1` (không phải `/api`). Tham chiếu đầy đủ: `docs/api.md`.
+
+Data sources và engine:
 
 ```text
-POST   /api/data-sources
-GET    /api/data-sources
-GET    /api/data-sources/{id}
-PUT    /api/data-sources/{id}
-DELETE /api/data-sources/{id}
-POST   /api/data-sources/{id}/test-connection
-POST   /api/data-sources/{id}/sync-schema
+GET    /v1/db-engines
+POST   /v1/data-sources
+GET    /v1/data-sources
+GET    /v1/data-sources/{id}
+PUT    /v1/data-sources/{id}
+DELETE /v1/data-sources/{id}                 (archive)
+POST   /v1/data-sources/{id}/test-connection
+POST   /v1/data-sources/test-connection?sourceId=   (test cấu hình chưa lưu)
+POST   /v1/data-sources/{id}/sync-schema
 ```
 
 Conversations:
 
 ```text
-POST   /api/conversations
-GET    /api/conversations
-GET    /api/conversations/{id}
-PATCH  /api/conversations/{id}
-DELETE /api/conversations/{id}
-GET    /api/conversations/{id}/messages
-POST   /api/conversations/{id}/messages
+POST   /v1/conversations
+GET    /v1/conversations
+GET    /v1/conversations/{id}
+PATCH  /v1/conversations/{id}
+DELETE /v1/conversations/{id}                (archive)
+GET    /v1/conversations/{id}/messages
+POST   /v1/conversations/{id}/messages
+POST   /v1/conversations/{id}/messages/stream            (SSE)
+POST   /v1/conversations/{id}/messages/{messageId}/feedback
+POST   /v1/conversations/{id}/query                      (SQL thủ công)
 ```
+
+Auth/user: `POST /v1/auth/login`, `POST /v1/user/create_user`, `GET|PUT|DELETE /v1/user/me`, `/logout`.
 
 ## 8. Quy tắc code
 
@@ -194,6 +212,10 @@ mvn clean test
 mvn spring-boot:run
 ```
 
+Agent (`agent/`): `pytest`. Frontend (`text-to-sql-agent/`): `npm run lint && npm run build`.
+
+Lưu ý: `mvn clean test` dùng H2 và tắt Flyway, nên không phát hiện lỗi migration; phải chạy `mvn spring-boot:run` với MySQL thật.
+
 Nếu startup fail ở Flyway:
 
 1. Đọc câu SQL và line number trong log.
@@ -206,10 +228,11 @@ Không kết luận lỗi chỉ dựa vào checksum âm hoặc dòng `BUILD SUCC
 
 ## 10. Thứ tự phát triển đề xuất
 
-1. Hoàn thiện entity/repository/service/controller cho data source.
-2. Implement test connection và schema sync.
-3. Hoàn thiện conversation/message CRUD có kiểm tra ownership.
-4. Implement AI Text-to-SQL và SQL safety validator.
-5. Implement query execution và lưu lịch sử.
-6. Thêm pagination, giới hạn row/result size, timeout và audit log.
-7. Bổ sung schema versioning nếu schema database ngoài thường xuyên thay đổi.
+Bước 1–5 của kế hoạch ban đầu (data source, test/sync schema, conversation/message, AI Text-to-SQL + SQL safety, query execution) đã xong. Việc tiếp theo:
+
+1. JWT secret qua biến môi trường; cookie `HttpOnly`/`Secure`.
+2. Mã hóa password data source ở application layer.
+3. Ghi `BLOCKED` vào `query_executions` khi SQL bị chặn, phục vụ audit.
+4. Pagination, API lịch sử query execution, giới hạn kích thước `result_json`.
+5. Integration test với Testcontainers cho từng engine.
+6. Schema versioning nếu schema database ngoài thường xuyên thay đổi.

@@ -1,354 +1,359 @@
 # KLTN – AI Text-to-SQL
 
-KLTN là ứng dụng cho phép người dùng đăng nhập, khai báo database được phép truy cập, đồng bộ schema, tạo conversation và thực thi các truy vấn đọc dữ liệu.
+KLTN là ứng dụng hỏi đáp dữ liệu bằng ngôn ngữ tự nhiên. Người dùng đăng nhập, khai báo các database được phép truy cập (MySQL, MariaDB, PostgreSQL, SQL Server, Oracle), đồng bộ schema, tạo cuộc hội thoại và đặt câu hỏi. Một AI agent tự khám phá schema, sinh câu SQL **chỉ đọc**, backend kiểm tra an toàn rồi thực thi, sau đó AI phân tích kết quả, đề xuất biểu đồ và lưu toàn bộ lịch sử.
 
-## Trạng thái hiện tại
+> Tài liệu chi tiết nằm trong thư mục [`docs/`](docs/):
+>
+> | Tài liệu | Nội dung |
+> |---|---|
+> | [`docs/architecture.md`](docs/architecture.md) | Kiến trúc, agent loop, streaming SSE, cache, bảo mật |
+> | [`docs/api.md`](docs/api.md) | Tham chiếu đầy đủ REST API của backend và agent |
+> | [`docs/database.md`](docs/database.md) | Schema ứng dụng, trạng thái, catalog `db_engines`, Flyway |
+> | [`agent/README.md`](agent/README.md) | Dịch vụ AI agent (FastAPI + OpenAI) |
+> | [`text-to-sql-agent/README.md`](text-to-sql-agent/README.md) | Frontend Next.js |
+> | [`AGENTS.md`](AGENTS.md) | Quy tắc nghiệp vụ và quy tắc cộng tác cho người/AI sửa code |
 
-Đã có:
+---
 
-- Đăng ký, đăng nhập bằng JWT cookie và quản lý user.
-- CRUD data source theo ownership của user, hỗ trợ MySQL, MariaDB, PostgreSQL, SQL Server và Oracle.
-- Kiểm tra kết nối và đồng bộ schema database bên ngoài.
-- CRUD conversation, message và archive tài nguyên.
-- Thực thi SQL read-only và lưu lịch sử query execution.
-- Redis cache cho kết quả query thành công.
-- Docker Compose cho MySQL, Redis, backend và frontend.
-- Test backend bằng H2 in-memory.
+## 1. Tính năng
 
-Chưa hoàn thiện:
+**Tài khoản**
 
-- Backend chưa tự gọi LLM để chuyển câu hỏi tự nhiên thành SQL.
-- `POST /v1/conversations/{id}/messages` hiện mới lưu user message; assistant message cần tích hợp AI provider.
-- Chưa có pagination đầy đủ cho các danh sách.
+- Đăng ký, đăng nhập bằng JWT lưu trong cookie `access_cookie`, xem/sửa/xóa tài khoản.
 
-## Kiến trúc
+**Data source**
 
-```text
-Browser -> Next.js :3000 -> Spring Boot :8081 -> MySQL :3306
-                                      |
-                                      +-> Redis :6379
+- CRUD data source theo ownership; tên data source unique trong phạm vi một user.
+- Hỗ trợ 5 engine: MySQL, MariaDB, PostgreSQL, SQL Server, Oracle. Cách kết nối từng engine được lưu dưới dạng dữ liệu trong bảng `db_engines`, không hard-code.
+- Cấu hình riêng mỗi data source: schema, SSL, connect timeout, query timeout, số dòng tối đa, thuộc tính JDBC bổ sung (có danh sách chặn thuộc tính nguy hiểm).
+- Test kết nối cho cấu hình đã lưu hoặc **chưa lưu** (form nháp).
+- Đồng bộ schema (tên bảng/view, cột, kiểu dữ liệu, nullable) thành snapshot JSON; không đọc dữ liệu thật.
+- Xóa = archive (soft delete); lịch sử hội thoại vẫn đọc được.
 
-Spring Boot -> Database bên ngoài do user khai báo
-```
+**Hội thoại và AI agent**
 
-### Kiến trúc triển khai
+- Mỗi conversation gắn với đúng một data source.
+- Agent loop nhiều bước: AI có thể gọi tool `describe_table`, `sample_values`, `run_sql` (xem trước 20 dòng) trước khi chốt SQL cuối.
+- Tự sửa lỗi: SQL lỗi/không an toàn được gửi lại cho AI kèm thông báo lỗi; agent mất kết nối được retry với backoff.
+- Streaming tiến trình qua Server-Sent Events (`thought`, `observation`, `retry`, `result`, `error`).
+- AI đánh giá kết quả: tóm tắt, các điểm nổi bật và đề xuất biểu đồ (`table`, `bar`, `line`, `pie`, `number`).
+- Feedback 👍/👎 cho câu trả lời; các cặp câu hỏi → SQL được 👍 trở thành few-shot example cho các câu hỏi sau trên cùng data source.
+- Có endpoint chạy SQL thủ công (read-only) trong conversation.
+
+**Vận hành**
+
+- Redis cache kết quả query và ngữ cảnh hội thoại (best-effort: Redis lỗi thì bỏ qua).
+- Flyway migration cho schema ứng dụng.
+- Docker Compose dựng đủ MySQL, Redis, backend, agent, frontend.
+
+---
+
+## 2. Kiến trúc tổng quan
 
 ```mermaid
 flowchart LR
-    Browser[Browser] --> Frontend[Next.js\n:3000]
-    Frontend -->|REST + JWT cookie| Backend[Spring Boot\n:8081]
-    Backend --> AppDB[(MySQL\nApplication DB)]
-    Backend --> Redis[(Redis\nQuery cache)]
-    Backend -->|JDBC read-only| External[(Database\ndo user khai báo)]
+    Browser[Trình duyệt] --> FE[Next.js frontend\n:3000]
+    FE -->|REST + SSE\ncookie JWT| BE[Spring Boot backend\n:8081]
+    BE -->|HTTP + X-API-Key| AG[FastAPI AI agent\n:8001]
+    AG -->|Responses API| OAI[(OpenAI)]
+    BE --> APPDB[(MySQL\nDB ứng dụng)]
+    BE --> REDIS[(Redis\ncache)]
+    BE -->|JDBC read-only| EXT[(Database của user\nMySQL/MariaDB/PG/MSSQL/Oracle)]
 ```
 
-### Luồng nghiệp vụ chính
+Nguyên tắc phân tách trách nhiệm:
 
-```mermaid
-sequenceDiagram
-    actor User
-    participant UI as Next.js
-    participant API as Spring Boot
-    participant DB as MySQL bên ngoài
-    participant Cache as Redis
+- **Agent không bao giờ kết nối database của user.** Agent chỉ nhận schema + kết quả tool do backend gửi và trả về quyết định (gọi tool nào / SQL cuối). Agent là stateless.
+- **Backend là nơi duy nhất chạm vào database của user**: kiểm tra ownership, validate SQL, mở kết nối read-only, giới hạn dòng/timeout, lưu lịch sử.
+- **Frontend** chỉ gọi backend; không biết địa chỉ agent.
 
-    User->>UI: Nhập câu hỏi hoặc SQL
-    UI->>API: POST /v1/conversations/{id}/query
-    API->>API: Kiểm tra JWT và ownership
-    API->>API: Validate SELECT/WITH read-only
-    API->>Cache: Tìm kết quả theo data source + SQL
-    alt Cache hit
-        Cache-->>API: resultJson
-    else Cache miss
-        API->>DB: Execute query, timeout 30s
-        DB-->>API: Columns + rows
-        API->>Cache: Lưu kết quả, TTL 60s
-    end
-    API->>API: Lưu query_execution
-    API-->>UI: Result + status + execution time
-    UI-->>User: Hiển thị kết quả
-```
+Chi tiết xem [`docs/architecture.md`](docs/architecture.md).
+
+---
+
+## 3. Cấu trúc repository
 
 ```text
-backend/ai_agent/       Spring Boot API, JPA, Flyway, security, query execution
-text-to-sql-agent/      Next.js frontend
-docker-compose.yml      Môi trường chạy đầy đủ
-AGENTS.md               Quy tắc cộng tác và nghiệp vụ của repository
+KLTN/
+├── README.md                    Tài liệu tổng quan (file này)
+├── AGENTS.md                    Quy tắc nghiệp vụ & cộng tác
+├── docker-compose.yml           Môi trường chạy đầy đủ 5 service
+├── docs/                        Tài liệu chi tiết (kiến trúc, API, database)
+├── backend/ai_agent/            Spring Boot 4.1 / Java 21
+│   ├── src/main/java/com/backend/ai_agent/
+│   │   ├── controller/          REST API (auth, user, data source, db engine, conversation)
+│   │   ├── service/             Nghiệp vụ, agent loop, JDBC, cache, SQL safety
+│   │   ├── repository/          Spring Data JPA
+│   │   ├── entity/              JPA entity
+│   │   ├── dto/request|response Contract API
+│   │   ├── security/            AuthFilter (đọc cookie JWT), JwtUtils
+│   │   ├── config/              Spring Security, CORS
+│   │   └── exception/           Exception nghiệp vụ + GlobalExceptionHandler
+│   ├── src/main/resources/
+│   │   ├── application.yml      Cấu hình chạy thật (MySQL + Redis)
+│   │   ├── application-test.yml Cấu hình test (H2, tắt Flyway)
+│   │   └── db/migration/        Flyway V1 → V7
+│   └── src/test/                Unit/integration test
+├── agent/                       FastAPI AI agent (Python 3.12)
+│   ├── app/                     main.py, provider.py, models.py, sql_safety.py, ...
+│   ├── tests/                   pytest
+│   └── .env.example
+├── text-to-sql-agent/           Next.js 16 / React 19 frontend
+└── script/
+    ├── intit.txt                Lệnh chạy nhanh 3 service khi dev
+    └── test-questions-rfam.md   Bộ câu hỏi kiểm thử với DB công khai Rfam
 ```
 
-Backend gồm `controller`, `service`, `repository`, `entity`, `dto`, `security`, `config`, `exception` và `src/main/resources/db/migration`.
+---
 
-## Chạy bằng Docker
+## 4. Chạy nhanh bằng Docker Compose
 
-Yêu cầu Docker Engine/Desktop có Docker Compose. Từ thư mục gốc:
+Yêu cầu: Docker Engine/Desktop có Compose v2, một OpenAI API key.
 
 ```bash
+# 1. Tạo file env cho agent (bắt buộc – compose đọc ./agent/.env)
+cp agent/.env.example agent/.env
+#    rồi sửa OPENAI_API_KEY=sk-... trong agent/.env
+
+# 2. Build và chạy
 docker compose up --build
 ```
 
-Địa chỉ mặc định:
+| Service | Container | Địa chỉ từ host |
+|---|---|---|
+| Frontend | `ai_agent_frontend` | <http://localhost:3000> |
+| Backend | `ai_agent_backend` | <http://localhost:8081> |
+| AI agent | `ai_agent_rules` | <http://localhost:8001> (Swagger: `/docs`) |
+| MySQL (DB ứng dụng) | `mysql_agent` | `localhost:3308`, user `root`, DB `ai_agent` |
+| Redis | `redis_agent` | `localhost:6379` |
 
-- Frontend: <http://localhost:3000>
-- Backend: <http://localhost:8081>
-- MySQL từ host: `localhost:3308`
-- Redis từ host: `localhost:6379`
-
-Dừng container:
-
-```bash
-docker compose down
-```
-
-Xóa cả dữ liệu development:
+Backend chờ MySQL và Redis healthy rồi mới khởi động; Flyway tự tạo schema khi backend start.
 
 ```bash
-docker compose down -v
+docker compose logs -f backend   # xem log một service
+docker compose down              # dừng, giữ dữ liệu
+docker compose down -v           # dừng và XÓA volume MySQL/Redis
 ```
 
-Chỉ dùng `down -v` khi chắc chắn không cần dữ liệu local nữa.
+Chỉ dùng `down -v` khi chắc chắn không cần dữ liệu local.
+
+### Biến môi trường của Compose
+
+Đặt trong shell hoặc file `.env` ở thư mục gốc (Compose tự đọc).
 
 | Biến | Mặc định | Ý nghĩa |
-|---|---:|---|
-| `MYSQL_ROOT_PASSWORD` | `1234` | Mật khẩu root MySQL |
-| `MYSQL_PORT` | `3308` | Port MySQL trên host |
-| `REDIS_PORT` | `6379` | Port Redis trên host |
-| `BACKEND_PORT` | `8081` | Port backend trên host |
-| `FRONTEND_PORT` | `3000` | Port frontend trên host |
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8081` | Backend URL của frontend |
-| `QUERY_CACHE_TTL_SECONDS` | `60` | TTL cache query và context conversation |
-| `AGENT_BASE_URL` | `http://localhost:8001` | URL FastAPI OpenAI agent |
-| `AGENT_API_KEY` | `mock-ai-agent-key` | Shared key giữa backend và agent |
-| `OPENAI_API_KEY` | — | API key được agent dùng để gọi OpenAI |
-| `OPENAI_MODEL` | `gpt-4o-mini` | Model sinh kế hoạch SQL có cấu trúc |
+|---|---|---|
+| `MYSQL_ROOT_PASSWORD` | `1234` | Mật khẩu root MySQL ứng dụng |
+| `MYSQL_PORT` | `3308` | Port MySQL publish ra host |
+| `REDIS_PORT` | `6379` | Port Redis publish ra host |
+| `BACKEND_PORT` | `8081` | Port backend publish ra host |
+| `AGENT_PORT` | `8001` | Port agent publish ra host |
+| `FRONTEND_PORT` | `3000` | Port frontend publish ra host |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8081` | URL backend mà **trình duyệt** gọi (nhúng lúc build image) |
+| `QUERY_CACHE_TTL_SECONDS` | `60` | TTL cache kết quả query và ngữ cảnh hội thoại |
+| `AGENT_BASE_URL` | `http://agent:8001` | URL backend dùng để gọi agent |
+| `AGENT_API_KEY` | `mock-ai-agent-key` | Shared key giữa backend và agent (header `X-API-Key`) |
+| `AGENT_CORS_ORIGINS` | `http://localhost:3000` | CORS origin của agent |
 
-Khi chạy backend ngoài Docker, dùng `AGENT_BASE_URL=http://localhost:8001`. Khi chạy cả backend và agent bằng Compose, mặc định dùng `http://agent:8001`. Nếu backend ở Docker nhưng agent chạy trên host, dùng `AGENT_BASE_URL=http://host.docker.internal:8001`.
+Biến của OpenAI (`OPENAI_API_KEY`, `OPENAI_MODEL`, ...) nằm trong `agent/.env`, xem [mục 6](#6-cấu-hình).
 
-Ví dụ:
+Ví dụ: `QUERY_CACHE_TTL_SECONDS=120 BACKEND_PORT=9090 NEXT_PUBLIC_API_URL=http://localhost:9090 docker compose up --build`.
+
+> Đổi `NEXT_PUBLIC_API_URL` phải build lại image frontend vì biến này được nhúng vào bundle lúc build. Nếu đổi origin của frontend, cũng phải thêm origin đó vào CORS của backend (`SecurityConfig`), hiện chỉ cho phép `http://localhost:3000` và `http://localhost:5173`.
+
+---
+
+## 5. Chạy local (không Docker) để phát triển
+
+Yêu cầu: Java 21 + Maven, Python 3.12, Node.js 22 + npm, MySQL 8 và Redis.
+
+### 5.1. Hạ tầng
+
+Cách nhanh nhất là chỉ bật MySQL và Redis bằng Compose:
 
 ```bash
-QUERY_CACHE_TTL_SECONDS=120 docker compose up --build
+docker compose up -d mysql-db redis
 ```
 
-## Chạy local không dùng Docker
+Backend mặc định kết nối `jdbc:mysql://localhost:3308/ai_agent` với `root` / `1234` (xem `backend/ai_agent/src/main/resources/application.yml`).
 
-### Backend
+### 5.2. AI agent (port 8001)
 
-Yêu cầu Java 21, Maven và MySQL ở `localhost:3308`.
+```bash
+cd agent
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env        # điền OPENAI_API_KEY
+uvicorn app.main:app --reload --port 8001 --ws websockets
+```
+
+Kiểm tra: `curl http://localhost:8001/health` → `{"status":"ok","provider":"openai"}`.
+
+### 5.3. Backend (port 8081)
 
 ```bash
 cd backend/ai_agent
-mvn spring-boot:run
+mvn spring-boot:run          # hoặc ./mvnw spring-boot:run
 ```
 
-Backend dùng Flyway để tạo/cập nhật schema ứng dụng.
+Ghi đè cấu hình bằng biến môi trường khi cần, ví dụ:
 
-### Frontend
+```bash
+AGENT_BASE_URL=http://localhost:8001 AGENT_MAX_STEPS=10 mvn spring-boot:run
+SPRING_DATASOURCE_URL='jdbc:mysql://localhost:3306/ai_agent?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true' \
+SPRING_DATASOURCE_PASSWORD=secret mvn spring-boot:run
+```
 
-Yêu cầu Node.js và npm.
+Kết hợp hỗn hợp:
+
+| Backend chạy ở | Agent chạy ở | `AGENT_BASE_URL` |
+|---|---|---|
+| Host | Host | `http://localhost:8001` (mặc định) |
+| Compose | Compose | `http://agent:8001` (mặc định của Compose) |
+| Compose | Host | `http://host.docker.internal:8001` |
+
+### 5.4. Frontend (port 3000)
 
 ```bash
 cd text-to-sql-agent
 npm ci
-npm run dev
+npm run dev                  # NEXT_PUBLIC_API_URL mặc định http://localhost:8081
 ```
 
-Nếu backend chạy ở địa chỉ khác:
+Mở <http://localhost:3000>, đăng ký tài khoản, đăng nhập.
+
+### 5.5. Thử nhanh với database công khai
+
+`script/test-questions-rfam.md` dùng database Rfam công khai (MySQL `mysql-rfam-public.ebi.ac.uk:4497`, DB `Rfam`, user `rfamro`, không mật khẩu) và có sẵn bộ câu hỏi kèm đáp án tham chiếu để đánh giá chất lượng agent.
+
+Luồng sử dụng:
+
+1. Đăng ký và đăng nhập.
+2. Thêm data source → **Test kết nối** → Lưu.
+3. **Đồng bộ schema** (bắt buộc: agent chỉ biết những bảng có trong snapshot).
+4. Tạo conversation với data source đó.
+5. Đặt câu hỏi, theo dõi các bước của agent, xem bảng/biểu đồ/phân tích.
+6. Đánh giá 👍 cho câu trả lời đúng để agent học theo.
+
+---
+
+## 6. Cấu hình
+
+### Backend (`application.yml`)
+
+| Thuộc tính | Biến môi trường | Mặc định | Ý nghĩa |
+|---|---|---|---|
+| `server.port` | `SERVER_PORT` | `8081` | Port HTTP |
+| `spring.datasource.url` | `SPRING_DATASOURCE_URL` | `jdbc:mysql://localhost:3308/ai_agent?...` | DB ứng dụng |
+| `spring.datasource.username` | `SPRING_DATASOURCE_USERNAME` | `root` | |
+| `spring.datasource.password` | `SPRING_DATASOURCE_PASSWORD` | `1234` | |
+| `spring.data.redis.host` | `REDIS_HOST` | `localhost` | |
+| `spring.data.redis.port` | `REDIS_PORT` | `6379` | |
+| `app.agent.base-url` | `AGENT_BASE_URL` | `http://localhost:8001` | URL agent |
+| `app.agent.api-key` | `AGENT_API_KEY` | `mock-ai-agent-key` | Gửi trong header `X-API-Key` |
+| `app.agent.max-steps` | `AGENT_MAX_STEPS` | `8` (tối thiểu 2) | Số bước tối đa của agent loop mỗi câu hỏi |
+| `app.agent.max-retries` | `AGENT_MAX_RETRIES` | `3` | Số lần lỗi (agent/tool/SQL) cho phép trước khi bỏ cuộc |
+| `app.cache.query-ttl-seconds` | `QUERY_CACHE_TTL_SECONDS` | `60` | TTL Redis |
+
+JPA chạy `ddl-auto: validate` – schema do Flyway quản lý, entity phải khớp migration.
+
+### Agent (`agent/.env`)
+
+| Biến | Mặc định | Ý nghĩa |
+|---|---|---|
+| `OPENAI_API_KEY` | trống | Key OpenAI. **Trống ⇒ agent dùng `MockAgentProvider`** (chỉ sinh `SELECT COUNT(*)`), dùng cho test |
+| `OPENAI_MODEL` | `gpt-4o-mini` | Model; với `gpt-5*`, `o1`, `o3`, `o4` agent gửi thêm tham số reasoning |
+| `AI_TIMEOUT` | `60` | Timeout (giây) mỗi lần gọi OpenAI |
+| `AI_MAX_TOKENS` | `1200` | `max_output_tokens` lần gọi đầu |
+| `AI_RETRY_MAX_TOKENS` | `2048` | Budget khi tự gọi lại do output bị cắt |
+| `AI_REASONING_EFFORT` | `low` | Reasoning effort cho reasoning model |
+| `AGENT_API_KEY` | `mock-ai-agent-key` | Phải trùng với backend |
+| `AGENT_CORS_ORIGINS` | `http://localhost:3000` | Danh sách origin, phân tách bằng dấu phẩy |
+| `AGENT_CACHE_TTL_SECONDS` | `300` | TTL cache in-process của `/v1/agent/generate-sql` |
+
+### Frontend
+
+| Biến | Mặc định | Ý nghĩa |
+|---|---|---|
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8081` | URL backend; nhúng vào bundle lúc build |
+
+> Không commit file `.env` chứa key thật. `.gitignore` đã bỏ qua `*.env`.
+
+---
+
+## 7. Tóm tắt API
+
+Tất cả endpoint có tiền tố `/v1`. Trừ `POST /v1/auth/login` và `POST /v1/user/create_user`, mọi request phải kèm cookie `access_cookie`.
+
+| Nhóm | Endpoint chính |
+|---|---|
+| Auth/User | `POST /v1/auth/login`, `POST /v1/user/create_user`, `GET/PUT/DELETE /v1/user/me`, `POST /logout` |
+| Engine | `GET /v1/db-engines` |
+| Data source | `POST/GET /v1/data-sources`, `GET/PUT/DELETE /v1/data-sources/{id}`, `POST /v1/data-sources/{id}/test-connection`, `POST /v1/data-sources/test-connection?sourceId=`, `POST /v1/data-sources/{id}/sync-schema` |
+| Conversation | `POST/GET /v1/conversations`, `GET/PATCH/DELETE /v1/conversations/{id}` |
+| Chat | `GET/POST /v1/conversations/{id}/messages`, `POST /v1/conversations/{id}/messages/stream` (SSE), `POST /v1/conversations/{id}/messages/{messageId}/feedback` |
+| Query thủ công | `POST /v1/conversations/{id}/query` |
+
+Request/response chi tiết, mã lỗi và ví dụ `curl`: [`docs/api.md`](docs/api.md).
+
+---
+
+## 8. Kiểm thử
 
 ```bash
-NEXT_PUBLIC_API_URL=http://localhost:8081 npm run dev
+# Backend – dùng profile test (H2 in-memory, tắt Flyway), không cần MySQL/Redis
+cd backend/ai_agent && mvn clean test
+
+# Agent
+cd agent && source .venv/bin/activate && pytest
+
+# Frontend
+cd text-to-sql-agent && npm run lint && npm run build
 ```
 
-## API
+| Bộ test | Nội dung |
+|---|---|
+| `AiAgentApplicationTests` | Application context khởi động được |
+| `SqlSafetyValidatorTest` | Cho phép `SELECT`/`WITH`; chặn mutation, DDL, multi-statement, comment, hàm nguy hiểm theo engine |
+| `JdbcConnectionFactoryTest` | Build URL/properties từ catalog; chặn ghi đè credential và thuộc tính JDBC nguy hiểm; quote identifier; row limit theo engine; chặn host/database có thể inject tham số URL |
+| `ConversationServiceAgentLoopTest` | Retry khi agent không truy cập được; feed SQL lỗi lại cho agent; chặn SQL không an toàn và bỏ cuộc sau `max-retries` |
+| `agent/tests/test_agent.py` | `/health` không cần key; endpoint cần `X-API-Key`; SQL sinh ra là read-only; vòng `step` gọi tool rồi kết thúc; `final` bắt buộc có SQL |
 
-Các endpoint dưới đây, trừ endpoint public, yêu cầu JWT cookie sau khi đăng nhập.
+Kiểm tra end-to-end thủ công bằng bộ câu hỏi `script/test-questions-rfam.md`.
 
-### Authentication và user
+---
 
-| Method | Endpoint | Mô tả |
-|---|---|---|
-| `POST` | `/v1/user/create_user` | Tạo user |
-| `POST` | `/v1/auth/login` | Đăng nhập và set cookie |
-| `GET` | `/v1/user/me` | Lấy user hiện tại |
-| `PUT` | `/v1/user/me` | Cập nhật user hiện tại |
-| `DELETE` | `/v1/user/me` | Xóa user hiện tại |
+## 9. Bảo mật – tóm tắt
 
-### Data source
+- Ownership: mọi truy vấn tài nguyên dùng `userId` lấy từ JWT (`findByIdAndUserId`, `findByIdAndOwnerId`), không tin id do client gửi.
+- SQL read-only được kiểm tra **hai lớp** (agent và backend) + `Connection.setReadOnly(true)` + `setMaxRows` + `setQueryTimeout`.
+- Password data source không bao giờ có trong response; thông báo lỗi chứa `password=` bị che.
+- Thuộc tính JDBC tùy chỉnh không được ghi đè `user`/`password`/host/port và không được chứa các từ khóa nguy hiểm (`factory`, `interceptor`, `deserializ`, `infile`, ...).
+- Agent được bảo vệ bằng `X-API-Key`; prompt, response thô và key OpenAI không bị trả ra ngoài.
 
-| Method | Endpoint | Mô tả |
-|---|---|---|
-| `POST` | `/v1/data-sources` | Tạo data source |
-| `GET` | `/v1/data-sources` | Liệt kê data source của user |
-| `GET` | `/v1/data-sources/{id}` | Xem data source |
-| `PUT` | `/v1/data-sources/{id}` | Cập nhật data source |
-| `DELETE` | `/v1/data-sources/{id}` | Archive data source |
-| `POST` | `/v1/data-sources/{id}/test-connection` | Kiểm tra kết nối |
-| `POST` | `/v1/data-sources/{id}/sync-schema` | Đồng bộ schema |
-| `POST` | `/v1/data-sources/test-connection?sourceId=` | Kiểm tra cấu hình chưa lưu (blank password + `sourceId` dùng mật khẩu đã lưu) |
-| `GET` | `/v1/db-engines` | Danh sách loại database đang bật |
+Chi tiết và các giới hạn đã biết: [`docs/architecture.md#7-bảo-mật`](docs/architecture.md#7-bảo-mật).
 
-### Kết nối nhiều loại database
+---
 
-Cách backend kết nối tới từng loại database được lưu trong bảng `db_engines` (V6): driver, `url_template` (`{host}`, `{port}`, `{database}`), ký tự quote, kiểu giới hạn dòng (`LIMIT`/`TOP`/`FETCH`), câu lệnh chọn schema (`schema_init_sql`), thuộc tính mặc định, thuộc tính SSL và thuộc tính timeout. Muốn chỉnh hoặc thêm engine, chỉ cần `UPDATE`/`INSERT` vào bảng này (engine mới cần thêm JDBC driver vào `pom.xml`), ví dụ:
+## 10. Hạn chế đã biết và hướng phát triển
 
-```sql
-UPDATE db_engines SET default_properties = 'sslMode=DISABLED;allowPublicKeyRetrieval=true;serverTimezone=Asia/Ho_Chi_Minh'
-WHERE code = 'MYSQL';
-UPDATE db_engines SET enabled = FALSE WHERE code = 'ORACLE';
-```
+Hạn chế hiện tại (đã đối chiếu với code):
 
-Mỗi data source có thêm cấu hình riêng (V7): `schema_name`, `ssl_enabled`, `connect_timeout_seconds`, `query_timeout_seconds`, `max_rows` và bảng `data_source_properties` chứa thuộc tính JDBC bổ sung. Backend từ chối thuộc tính ghi đè `user`/`password` và các thuộc tính driver nguy hiểm (`autoDeserialize`, `allowLoadLocalInfile`, `socketFactory`, `*Interceptor*`, `*Callback*`...). AI agent nhận `dialect` của engine để sinh SQL đúng cú pháp.
+1. **JWT secret sinh ngẫu nhiên mỗi lần backend khởi động** (`Jwts.SIG.HS512.key()`), nên restart backend làm mọi phiên đăng nhập mất hiệu lực và không chạy được nhiều instance. Cookie sống 60 phút, token hết hạn sau 10 giờ.
+2. Cookie `access_cookie` đang `httpOnly(false)` và không `Secure`.
+3. Password data source lưu **plain text** trong cột `data_sources.password`; cần mã hóa ở application layer hoặc dùng secret manager.
+4. Status `BLOCKED` của query execution và `CONNECTION_ERROR`/`SYNCING` của data source đã được dự kiến nhưng chưa được set ở đâu: SQL không an toàn bị từ chối trước khi tạo bản ghi.
+5. Xóa user (`DELETE /v1/user/me`) sẽ lỗi 500 nếu user còn data source (FK `ON DELETE RESTRICT`).
+6. Chưa có pagination cho danh sách conversation/message/data source; chưa có API xem lịch sử query execution riêng.
+7. CORS backend hard-code `localhost:3000` và `localhost:5173`.
+8. Thư mục virtualenv `agent/agent/` đang bị commit vào git; nên xóa khỏi repo và thêm vào `.gitignore`.
 
-`test-connection` chỉ kiểm tra kết nối. `sync-schema` đọc tên bảng, tên cột, kiểu dữ liệu và nullable; không đọc các dòng dữ liệu.
+Hướng phát triển:
 
-### Conversation và query
-
-| Method | Endpoint | Mô tả |
-|---|---|---|
-| `POST` | `/v1/conversations` | Tạo conversation với một data source |
-| `GET` | `/v1/conversations` | Liệt kê conversation |
-| `GET` | `/v1/conversations/{id}` | Xem conversation |
-| `PATCH` | `/v1/conversations/{id}` | Đổi title |
-| `DELETE` | `/v1/conversations/{id}` | Archive conversation |
-| `GET` | `/v1/conversations/{id}/messages` | Lấy lịch sử messages |
-| `POST` | `/v1/conversations/{id}/messages` | Gọi agent, chạy SQL read-only, lưu USER/ASSISTANT và trả chart metadata |
-| `POST` | `/v1/conversations/{id}/query` | Thực thi SQL read-only |
-
-Request mẫu:
-
-```json
-{
-  "question": "Lấy 10 người dùng đầu tiên",
-  "sql": "SELECT * FROM users LIMIT 10"
-}
-```
-
-SQL phải là một câu `SELECT` hoặc `WITH`. Backend chặn mutation, DDL, multi-statement và comment nguy hiểm. Mỗi query timeout sau 30 giây và trả tối đa 1.000 dòng.
-
-## Redis cache
-
-Cache được dùng cho query chạy thành công trong `QueryExecutionService`.
-
-- Key là SHA-256 của data source và SQL.
-- Giá trị gồm `resultJson` và `rowCount`.
-- TTL mặc định 60 giây, cấu hình bằng `QUERY_CACHE_TTL_SECONDS`.
-- Redis lỗi thì backend bỏ qua cache và truy vấn database trực tiếp.
-- Không cache password, connection URL hoặc credentials.
-
-## Database và migration
-
-```text
-users 1 --- N data_sources
-users 1 --- N conversations
-data_sources 1 --- N conversations
-conversations 1 --- N messages
-conversations 1 --- N query_executions
-```
-
-```mermaid
-erDiagram
-    USERS ||--o{ DATA_SOURCES : owns
-    USERS ||--o{ CONVERSATIONS : creates
-    DATA_SOURCES ||--o{ CONVERSATIONS : serves
-    CONVERSATIONS ||--o{ MESSAGES : contains
-    CONVERSATIONS ||--o{ QUERY_EXECUTIONS : records
-
-    USERS {
-        bigint id PK
-        varchar email UK
-        varchar full_name
-    }
-    DATA_SOURCES {
-        bigint id PK
-        bigint owner_id FK
-        varchar db_type
-        varchar host
-        varchar database_name
-        text schema_json
-        varchar status
-    }
-    CONVERSATIONS {
-        bigint id PK
-        bigint user_id FK
-        bigint data_source_id FK
-        varchar title
-        varchar status
-    }
-    MESSAGES {
-        bigint id PK
-        bigint conversation_id FK
-        varchar role
-        text content
-    }
-    QUERY_EXECUTIONS {
-        bigint id PK
-        bigint conversation_id FK
-        text question
-        text generated_sql
-        varchar status
-        text result_json
-        int row_count
-    }
-```
-
-### Trạng thái query execution
-
-```mermaid
-stateDiagram-v2
-    [*] --> GENERATED
-    GENERATED --> RUNNING: cache miss
-    GENERATED --> SUCCESS: cache hit
-    RUNNING --> SUCCESS: SELECT thành công
-    RUNNING --> FAILED: database/timeout error
-    GENERATED --> BLOCKED: SQL không read-only
-    SUCCESS --> [*]
-    FAILED --> [*]
-    BLOCKED --> [*]
-```
-
-Migration hiện có:
-
-- `V1__create_primary_tables.sql`: data sources, conversations, messages, query executions.
-- `V2__create_users.sql`: users.
-- `V3__alter_data_conversations.sql`: ownership, status và foreign key.
-- `V4__rename_conversation_status.sql`: điều chỉnh status conversation.
-- `V5__feedback_and_message_metadata.sql`: metadata message và feedback.
-- `V6__create_db_engines.sql`: catalog các loại database và cấu hình kết nối.
-- `V7__data_source_connection_settings.sql`: cấu hình kết nối theo data source và `data_source_properties`.
-
-Không sửa migration đã chạy trên database dùng chung. Khi thay đổi schema, tạo migration version mới trước rồi cập nhật entity.
-
-## Test và kiểm tra
-
-Backend dùng profile `test`, H2 in-memory và không cần MySQL/Redis thật:
-
-```bash
-cd backend/ai_agent
-mvn clean test
-```
-
-Test hiện kiểm tra application context và SQL safety (`SELECT`, `WITH`, mutation, multi-statement, comment nguy hiểm).
-
-Frontend:
-
-```bash
-cd text-to-sql-agent
-npm run lint
-npm run build
-```
-
-## Bảo mật và vận hành
-
-- Mọi tài nguyên phải được truy vấn theo user hiện tại từ JWT.
-- Không tin `user_id`, `owner_id`, status hoặc generated SQL do client gửi.
-- Không trả password trong response và không log credentials.
-- Chỉ chạy SQL read-only trên database bên ngoài.
-- Không chạy `flyway clean`, reset database hoặc xóa volume production nếu chưa được xác nhận.
-- Password data source hiện cần được mã hóa ở application-layer hoặc quản lý bằng secret manager khi triển khai production.
-
-## Hướng phát triển
-
-1. Tích hợp LLM để sinh SQL từ câu hỏi tự nhiên và schema snapshot.
-2. Lưu assistant message trong cùng chat flow.
-3. Bổ sung API query execution history và pagination.
-4. Thêm giới hạn kích thước JSON, audit log và integration test bằng Testcontainers.
-5. Dùng read-only credentials riêng cho từng data source.
+1. Cấu hình JWT secret qua biến môi trường, bật `httpOnly`/`Secure` cho cookie.
+2. Mã hóa password data source; khuyến nghị dùng tài khoản DB read-only riêng cho mỗi data source.
+3. Ghi nhận `BLOCKED` vào `query_executions` để audit.
+4. Pagination, API lịch sử query, giới hạn kích thước `result_json`.
+5. Integration test với Testcontainers cho từng engine.
+6. Schema versioning khi database ngoài thay đổi thường xuyên.
