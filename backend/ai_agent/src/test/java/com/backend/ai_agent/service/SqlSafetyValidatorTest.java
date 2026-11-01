@@ -25,4 +25,16 @@ class SqlSafetyValidatorTest {
         assertThrows(BadRequestException.class,
                 () -> validator.validateReadOnly("SELECT * FROM users /* bypass */"));
     }
+
+    @Test
+    void rejectsEngineSpecificWritesAndDangerousFunctions() {
+        assertThrows(BadRequestException.class,
+                () -> validator.validateReadOnly("SELECT * INTO backup_users FROM users"));
+        assertThrows(BadRequestException.class,
+                () -> validator.validateReadOnly("SELECT pg_read_file('/etc/passwd')"));
+        assertThrows(BadRequestException.class,
+                () -> validator.validateReadOnly("SELECT * FROM OPENROWSET('SQLNCLI', 'x', 'y')"));
+        assertDoesNotThrow(() -> validator.validateReadOnly("SELECT TOP 10 [name] FROM [dbo].[users]"));
+        assertDoesNotThrow(() -> validator.validateReadOnly("SELECT name FROM users FETCH FIRST 10 ROWS ONLY"));
+    }
 }

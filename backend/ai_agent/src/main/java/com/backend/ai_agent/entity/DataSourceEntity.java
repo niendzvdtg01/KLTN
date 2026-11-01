@@ -1,7 +1,10 @@
 package com.backend.ai_agent.entity;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -10,6 +13,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
@@ -46,6 +51,25 @@ public class DataSourceEntity {
 
     @Column(nullable = false, length = 500)
     private String password;
+
+    @Column(name = "schema_name", length = 128)
+    private String schemaName;
+
+    @Column(name = "ssl_enabled", nullable = false)
+    private boolean sslEnabled;
+
+    @Column(name = "connect_timeout_seconds", nullable = false)
+    private Integer connectTimeoutSeconds = 10;
+
+    @Column(name = "query_timeout_seconds", nullable = false)
+    private Integer queryTimeoutSeconds = 30;
+
+    @Column(name = "max_rows", nullable = false)
+    private Integer maxRows = 1000;
+
+    @OneToMany(mappedBy = "dataSource", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("key ASC")
+    private List<DataSourcePropertyEntity> properties = new ArrayList<>();
 
     @Column(name = "schema_json", columnDefinition = "LONGTEXT")
     private String schemaJson;
@@ -149,6 +173,50 @@ public class DataSourceEntity {
 
     public void setPassword(String password) {
         this.password = password;
+    }
+
+    public String getSchemaName() {
+        return schemaName;
+    }
+
+    public void setSchemaName(String schemaName) {
+        this.schemaName = schemaName;
+    }
+
+    public boolean isSslEnabled() {
+        return sslEnabled;
+    }
+
+    public void setSslEnabled(boolean sslEnabled) {
+        this.sslEnabled = sslEnabled;
+    }
+
+    public Integer getConnectTimeoutSeconds() {
+        return connectTimeoutSeconds;
+    }
+
+    public void setConnectTimeoutSeconds(Integer value) {
+        this.connectTimeoutSeconds = value;
+    }
+
+    public Integer getQueryTimeoutSeconds() {
+        return queryTimeoutSeconds;
+    }
+
+    public void setQueryTimeoutSeconds(Integer value) {
+        this.queryTimeoutSeconds = value;
+    }
+
+    public Integer getMaxRows() {
+        return maxRows;
+    }
+
+    public void setMaxRows(Integer maxRows) {
+        this.maxRows = maxRows;
+    }
+
+    public List<DataSourcePropertyEntity> getProperties() {
+        return properties;
     }
 
     public String getSchemaJson() {

@@ -20,9 +20,9 @@ import { Icon } from "@/src/presentation/components/Icon";
 import type { QueryResult } from "@/src/core/domain/textToSql";
 import { buildChartModel, pieData, type ChartModel, type PlotType } from "../chartData";
 
-// Distinct hues so multiple series stay readable; amber first to match the theme.
-const SERIES_COLORS = ["#E09A1A", "#3B7EA1", "#5FA36A", "#C0603F", "#8C6BB1", "#7A6A4F", "#D4B44A"];
-const AXIS_TICK = { fontSize: 11, fill: "#8a7d63" };
+// Distinct hues so multiple series stay readable; indigo first to match the theme.
+const SERIES_COLORS = ["#4f46e5", "#0ea5a4", "#f59e0b", "#e11d48", "#8b5cf6", "#0284c7", "#65a30d"];
+const AXIS_TICK = { fontSize: 11, fill: "#667085" };
 const TYPE_LABELS: Record<PlotType, string> = { bar: "Cột", line: "Đường", pie: "Tròn" };
 
 const fullFormat = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 2 });
@@ -112,7 +112,7 @@ function PlotView({ model, type }: { model: PlotModel; type: PlotType }) {
       <div className="chart-view">
         <ResponsiveContainer width="100%" height={320}>
           <LineChart data={data} margin={{ top: 12, right: 18, left: 4, bottom: 4 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#efe6d2" vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="#eaecf0" vertical={false} />
             <XAxis dataKey={x} tick={AXIS_TICK} tickFormatter={(value) => truncate(value)} minTickGap={16} />
             <YAxis yAxisId="left" tick={AXIS_TICK} tickFormatter={formatCompact} width={56} />
             {dualAxis && <YAxis yAxisId="right" orientation="right" tick={AXIS_TICK} tickFormatter={formatCompact} width={56} />}
@@ -135,7 +135,7 @@ function PlotView({ model, type }: { model: PlotModel; type: PlotType }) {
     <div className="chart-view">
       <ResponsiveContainer width="100%" height={height}>
         <BarChart data={data} layout={horizontal ? "vertical" : "horizontal"} margin={{ top: 12, right: 18, left: 4, bottom: 4 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#efe6d2" horizontal={!horizontal} vertical={horizontal} />
+          <CartesianGrid strokeDasharray="3 3" stroke="#eaecf0" horizontal={!horizontal} vertical={horizontal} />
           {horizontal ? (
             <>
               <XAxis type="number" tick={AXIS_TICK} tickFormatter={formatCompact} />
@@ -148,7 +148,7 @@ function PlotView({ model, type }: { model: PlotModel; type: PlotType }) {
               {dualAxis && <YAxis yAxisId="right" orientation="right" tick={AXIS_TICK} tickFormatter={formatCompact} width={56} />}
             </>
           )}
-          <Tooltip cursor={{ fill: "#FFF7E6" }} formatter={(value) => formatFull(value)} />
+          <Tooltip cursor={{ fill: "#f2f4f7" }} formatter={(value) => formatFull(value)} />
           {multi && <Legend />}
           {series.map((name, index) => (
             <Bar key={name} yAxisId={!horizontal && dualAxis && index === 1 ? "right" : "left"} dataKey={name}

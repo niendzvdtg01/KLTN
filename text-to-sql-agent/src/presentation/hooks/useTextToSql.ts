@@ -26,19 +26,22 @@ function applyEvent(progress: AgentProgress, event: AgentStreamEvent): AgentProg
 }
 
 export function useTextToSql() {
-  const [state, setState] = useState<TextToSqlState>({ question: "", isLoading: false, result: null, progress: null });
+  const [state, setState] = useState<TextToSqlState>({ question: "", pending: null, isLoading: false, result: null, progress: null });
   const setQuestion = (question: string) => setState((current) => ({ ...current, question }));
+  const reset = () => setState({ question: "", pending: null, isLoading: false, result: null, progress: null });
   const runQuery = async (conversationId: number | null) => {
-    if (!conversationId || !state.question.trim()) return;
-    setState((current) => ({ ...current, isLoading: true, progress: emptyProgress }));
+    const question = state.question.trim();
+    if (!conversationId || !question || state.isLoading) return;
+    setState((current) => ({ ...current, question: "", pending: question, isLoading: true, result: null, progress: emptyProgress }));
     try {
-      const response = await streamConversationMessage(conversationId, state.question.trim(), (event) =>
+      const response = await streamConversationMessage(conversationId, question, (event) =>
         setState((current) => ({ ...current, progress: applyEvent(current.progress ?? emptyProgress, event) })));
       const parsed = response.query.resultJson
         ? (JSON.parse(response.query.resultJson) as { rows?: Record<string, unknown>[] })
         : {};
       setState((current) => ({
         ...current,
+        pending: null,
         isLoading: false,
         progress: current.progress ? { ...current.progress, retry: null } : null,
         result: {
@@ -58,9 +61,10 @@ export function useTextToSql() {
       return response;
     } catch (error) {
       const failure = error instanceof Error ? error.message : "Agent không thể hoàn thành câu hỏi.";
-      setState((current) => ({ ...current, isLoading: false, progress: { ...(current.progress ?? emptyProgress), retry: null, failure } }));
+      // Give the question back to the composer so it can be rephrased.
+      setState((current) => ({ ...current, question: current.question || question, isLoading: false, progress: { ...(current.progress ?? emptyProgress), retry: null, failure } }));
       throw error;
     }
   };
-  return { state, setQuestion, runQuery };
+  return { state, setQuestion, runQuery, reset };
 }

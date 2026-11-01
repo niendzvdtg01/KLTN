@@ -2,7 +2,6 @@ package com.backend.ai_agent.service;
 
 import java.math.BigDecimal;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
@@ -33,23 +32,25 @@ import tools.jackson.databind.json.JsonMapper;
 @Service
 public class QueryExecutionService {
     private static final String ACTIVE = "ACTIVE";
-    private static final int MAX_ROWS = 1000;
-    private static final int QUERY_TIMEOUT_SECONDS = 30;
+    private static final int DEFAULT_MAX_ROWS = 1000;
+    private static final int DEFAULT_QUERY_TIMEOUT_SECONDS = 30;
 
     private final ConversationRepository conversationRepository;
     private final QueryExecutionRepository queryExecutionRepository;
     private final SqlSafetyValidator sqlSafetyValidator;
     private final QueryCacheService queryCacheService;
     private final JsonMapper objectMapper;
+    private final JdbcConnectionFactory connectionFactory;
 
     public QueryExecutionService(ConversationRepository conversationRepository,
             QueryExecutionRepository queryExecutionRepository, SqlSafetyValidator sqlSafetyValidator,
-            QueryCacheService queryCacheService, JsonMapper objectMapper) {
+            QueryCacheService queryCacheService, JsonMapper objectMapper, JdbcConnectionFactory connectionFactory) {
         this.conversationRepository = conversationRepository;
         this.queryExecutionRepository = queryExecutionRepository;
         this.sqlSafetyValidator = sqlSafetyValidator;
         this.queryCacheService = queryCacheService;
         this.objectMapper = objectMapper;
+        this.connectionFactory = connectionFactory;
     }
 
     @Transactional
@@ -87,15 +88,18 @@ public class QueryExecutionService {
             return queryExecutionRepository.save(execution);
         }
 
+        int maxRows = source.getMaxRows() == null ? DEFAULT_MAX_ROWS : source.getMaxRows();
+        int timeoutSeconds = source.getQueryTimeoutSeconds() == null ? DEFAULT_QUERY_TIMEOUT_SECONDS
+                : source.getQueryTimeoutSeconds();
         long startedAt = System.nanoTime();
-        try (Connection connection = openConnection(source);
+        try (Connection connection = connectionFactory.open(source);
                 Statement statement = connection.createStatement()) {
             connection.setReadOnly(true);
             execution.setStatus("RUNNING");
-            statement.setMaxRows(MAX_ROWS);
-            statement.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
+            statement.setMaxRows(maxRows);
+            statement.setQueryTimeout(timeoutSeconds);
             try (ResultSet resultSet = statement.executeQuery(sql)) {
-                execution.setResultJson(toJson(resultSet));
+                execution.setResultJson(toJson(resultSet, maxRows));
                 execution.setRowCount(countRows(execution.getResultJson()));
             }
             execution.setStatus("SUCCESS");
@@ -111,21 +115,11 @@ public class QueryExecutionService {
         return execution;
     }
 
-    private Connection openConnection(DataSourceEntity source) throws SQLException {
-        if (!"MYSQL".equalsIgnoreCase(source.getDbType())) {
-            throw new SQLException("Chỉ hỗ trợ MySQL");
-        }
-        String url = "jdbc:mysql://" + source.getHost() + ":" + source.getPort() + "/"
-                + source.getDatabaseName()
-                + "?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true";
-        return DriverManager.getConnection(url, source.getUsername(), source.getPassword());
-    }
-
-    private String toJson(ResultSet resultSet) throws SQLException, JacksonException {
+    private String toJson(ResultSet resultSet, int maxRows) throws SQLException, JacksonException {
         ResultSetMetaData metadata = resultSet.getMetaData();
         int columnCount = metadata.getColumnCount();
         List<Map<String, Object>> rows = new ArrayList<>();
-        while (resultSet.next() && rows.size() < MAX_ROWS) {
+        while (resultSet.next() && rows.size() < maxRows) {
             Map<String, Object> row = new LinkedHashMap<>();
             for (int column = 1; column <= columnCount; column++) {
                 String label = metadata.getColumnLabel(column);
@@ -135,7 +129,7 @@ public class QueryExecutionService {
             rows.add(row);
         }
         return objectMapper.writeValueAsString(Map.of("columns", columnNames(metadata), "rows", rows,
-                "rowLimit", MAX_ROWS));
+                "rowLimit", maxRows));
     }
 
     private List<String> columnNames(ResultSetMetaData metadata) throws SQLException {

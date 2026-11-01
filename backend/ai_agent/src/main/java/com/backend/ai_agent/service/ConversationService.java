@@ -166,6 +166,7 @@ public class ConversationService {
         }
         String question = request.content().trim();
         String schemaJson = source.getSchemaJson();
+        String dialect = agentToolService.dialect(source);
         List<Map<String, String>> context = conversationContext(conversationId);
         List<Map<String, String>> examples = acceptedExamples(source.getId());
 
@@ -177,7 +178,8 @@ public class ConversationService {
             int stepNumber = steps.size() + 1;
             AgentClient.AgentStep decision;
             try {
-                decision = agentClient.step(question, schemaJson, context, examples, steps, maxSteps - steps.size());
+                decision = agentClient.step(question, schemaJson, dialect, context, examples, steps,
+                        maxSteps - steps.size());
             } catch (AgentClient.AgentUnavailableException exception) {
                 lastError = exception.getMessage();
                 retries = registerRetry(listener, retries, lastError, "Đang kết nối lại AI agent");

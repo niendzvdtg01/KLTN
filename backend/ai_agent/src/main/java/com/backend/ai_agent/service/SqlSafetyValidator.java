@@ -8,7 +8,12 @@ import com.backend.ai_agent.exception.BadRequestException;
 @Component
 public class SqlSafetyValidator {
     private static final Pattern FORBIDDEN = Pattern.compile(
-            "\\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|RENAME|GRANT|REVOKE|CALL|EXEC|SET|USE|LOAD|OUTFILE|DUMPFILE)\\b",
+            "\\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|RENAME|GRANT|REVOKE|CALL|EXEC|EXECUTE|SET|USE|LOAD"
+                    + "|OUTFILE|DUMPFILE|INTO|MERGE|COPY|LOCK|UNLOCK|HANDLER|WAITFOR|SHUTDOWN|KILL|BEGIN|COMMIT|ROLLBACK)\\b"
+                    // Engine functions that read files, open remote connections or block the server.
+                    + "|\\b(PG_READ_FILE|PG_READ_BINARY_FILE|PG_LS_DIR|PG_SLEEP|LO_IMPORT|LO_EXPORT|DBLINK\\w*"
+                    + "|OPENROWSET|OPENQUERY|OPENDATASOURCE|XP_\\w+|SP_\\w+|DBMS_\\w+|UTL_\\w+|LOAD_FILE|SLEEP"
+                    + "|BENCHMARK)\\s*\\(",
             Pattern.CASE_INSENSITIVE);
 
     public String validateReadOnly(String sql) {

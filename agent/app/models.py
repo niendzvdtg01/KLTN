@@ -34,6 +34,8 @@ class GenerateSqlRequest(BaseModel):
 
     question: str = Field(..., min_length=1, max_length=2_000)
     schema_: list[TableSchema] = Field(default_factory=list, max_length=100)
+    # SQL dialect of the target database engine (MySQL, PostgreSQL, T-SQL (SQL Server), Oracle SQL...).
+    dialect: str = Field(default="MySQL", max_length=50)
     conversation: list[dict[str, str]] = Field(default_factory=list, max_length=20)
     max_rows: int = Field(default=1000, ge=1, le=1000)
     # Self-correction feedback: the SQL that just failed and the DB error it raised.
@@ -104,6 +106,7 @@ class AgentStepRequest(BaseModel):
 
     question: str = Field(..., min_length=1, max_length=2_000)
     schema_: list[TableSchema] = Field(default_factory=list, max_length=100)
+    dialect: str = Field(default="MySQL", max_length=50)
     conversation: list[dict[str, str]] = Field(default_factory=list, max_length=20)
     examples: list[SqlExample] = Field(default_factory=list, max_length=10)
     steps: list[AgentStepRecord] = Field(default_factory=list, max_length=30)

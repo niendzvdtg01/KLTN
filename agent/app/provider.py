@@ -82,8 +82,15 @@ _STEP_FORMAT = {
     },
 }
 
+def _dialect_rules(dialect: str) -> str:
+    return (
+        f"Write {dialect} syntax only: use its row limiting (LIMIT n, SELECT TOP n or FETCH FIRST n ROWS ONLY), "
+        f"its date/string functions and its identifier quoting. "
+    )
+
+
 _STEP_INSTRUCTIONS = (
-    "You are an autonomous Text-to-SQL agent working against a read-only MySQL database. "
+    "You are an autonomous Text-to-SQL agent working against a read-only {dialect} database. "
     "Each turn you choose ONE next action and return JSON matching the schema.\n"
     "Tools (action='tool'):\n"
     "- describe_table(table): column names, types and nullability of one table.\n"
@@ -99,7 +106,7 @@ _STEP_INSTRUCTIONS = (
     "and fix it - never repeat the same failing call. If a query returns 0 rows unexpectedly, check the "
     "filter values with sample_values. When remaining_steps is 1 you MUST return action='final'. "
     "'thought' is one short sentence shown to the user, in the same language as the question. "
-    "Set unused fields to null. If 'accepted_examples' is given, follow their style."
+    "Set unused fields to null. If 'accepted_examples' is given, follow their style. {dialect_rules}"
 )
 
 
@@ -129,7 +136,7 @@ class OpenAIAgentProvider:
             raise RuntimeError("OPENAI_API_KEY chưa được cấu hình")
         if not request.schema_:
             raise UnsafeSqlError("Không có schema được đồng bộ để sinh SQL")
-        data = self._complete(self._instructions(request.schema_), self._input(request), _PLAN_FORMAT)
+        data = self._complete(self._instructions(request.schema_, request.dialect), self._input(request), _PLAN_FORMAT)
         plan = AgentPlan.model_validate(data)
         sql = validate_read_only_sql(plan.sql)
         self._validate_schema_scope(sql, request.schema_)
@@ -149,7 +156,8 @@ class OpenAIAgentProvider:
         }
         if request.examples:
             payload["accepted_examples"] = [{"question": e.question, "sql": e.sql} for e in request.examples]
-        data = self._complete(_STEP_INSTRUCTIONS, json.dumps(payload, ensure_ascii=False, default=str), _STEP_FORMAT)
+        instructions = _STEP_INSTRUCTIONS.format(dialect=request.dialect, dialect_rules=_dialect_rules(request.dialect))
+        data = self._complete(instructions, json.dumps(payload, ensure_ascii=False, default=str), _STEP_FORMAT)
         decision = AgentStepResponse.model_validate(data)
         if request.remaining_steps <= 1 and decision.action != "final":
             raise RuntimeError("Agent không kết thúc khi đã hết số bước cho phép")
@@ -214,9 +222,10 @@ class OpenAIAgentProvider:
         text = (response.output_text or "").strip()
         return not text
 
-    def _instructions(self, schema: list[TableSchema]) -> str:
+    def _instructions(self, schema: list[TableSchema], dialect: str = "MySQL") -> str:
         return (
-            "You are a production Text-to-SQL agent. Generate exactly one read-only MySQL query. "
+            f"You are a production Text-to-SQL agent. Generate exactly one read-only {dialect} query. "
+            + _dialect_rules(dialect) +
             "Use only tables and columns from the supplied schema. Never invent identifiers. "
             "Never use INSERT, UPDATE, DELETE, DDL, procedures, comments, multiple statements, "
             "or SELECT INTO. If the question cannot be answered from the schema, use a safe SELECT "
@@ -238,7 +247,7 @@ class OpenAIAgentProvider:
 
     def _validate_schema_scope(self, sql: str, schema: list[TableSchema]) -> None:
         allowed_tables = {table.name.casefold() for table in schema}
-        references = re.findall(r"\b(?:from|join)\s+[`]?([A-Za-z_][A-Za-z0-9_]*)[`]?", sql, re.IGNORECASE)
+        references = re.findall(r"\b(?:from|join)\s+[`\"\[]?([A-Za-z_][A-Za-z0-9_]*)[`\"\]]?", sql, re.IGNORECASE)
         if not references or any(reference.casefold() not in allowed_tables for reference in references):
             raise UnsafeSqlError("SQL truy cập table không có trong schema được cấp phép")
 

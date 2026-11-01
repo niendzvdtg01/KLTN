@@ -21,4 +21,5 @@ export type AgentStepItem = { step: number; tool: string; thought: string | null
 export type AgentRetryNotice = { attempt: number; maxAttempts: number; message: string; action: string };
 export type AgentProgress = { steps: AgentStepItem[]; retry: AgentRetryNotice | null; failure: string | null };
 
-export type TextToSqlState = { question: string; isLoading: boolean; result: QueryResult | null; progress: AgentProgress | null };
+/** `pending` is the question being answered, shown in the thread until history is reloaded. */
+export type TextToSqlState = { question: string; pending: string | null; isLoading: boolean; result: QueryResult | null; progress: AgentProgress | null };

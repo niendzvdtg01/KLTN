@@ -1,0 +1,11 @@
+#FastAPI
+cd agent
+source ./agent/bin/activate
+uvicorn app.main:app --reload --port 8001 --ws websockets
+#nextjs
+cd text-to-sql-agent
+npm run dev
+#java springboot
+cd backend/ai_agent
+mvn spring-boot:run
+

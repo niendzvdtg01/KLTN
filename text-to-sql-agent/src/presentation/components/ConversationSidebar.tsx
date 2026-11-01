@@ -9,69 +9,39 @@ type Props = {
   conversations: Conversation[];
   selectedId: number | null;
   busy: boolean;
-  onNew: () => void;
   onSelect: (conversation: Conversation) => void;
   onRename: (conversation: Conversation, title: string) => void;
   onArchive: (conversation: Conversation) => void;
 };
 
-export function ConversationSidebar({
-  conversations,
-  selectedId,
-  busy,
-  onNew,
-  onSelect,
-  onRename,
-  onArchive,
-}: Props) {
-  const active = conversations.filter((item) => item.status === "ACTIVE");
-  const archived = conversations.filter((item) => item.status === "ARCHIVED");
+export function ConversationSidebar({ conversations, selectedId, busy, onSelect, onRename, onArchive }: Props) {
+  const [search, setSearch] = useState("");
+  const term = search.trim().toLowerCase();
+  const matches = (item: Conversation) => !term || `${item.title} ${item.dataSourceName}`.toLowerCase().includes(term);
+  const active = conversations.filter((item) => item.status === "ACTIVE" && matches(item));
+  const archived = conversations.filter((item) => item.status === "ARCHIVED" && matches(item));
+  const itemProps = { selectedId, busy, onSelect, onRename, onArchive };
 
   return (
-    <section className="conversation-panel" aria-label="Conversations">
-      <div className="conversation-heading">
-        <div>
-          <span className="eyebrow">YOUR WORK</span>
-          <h2>Conversations</h2>
-        </div>
-        <button className="icon-action" onClick={onNew} disabled={busy} title="New conversation">
-          <Icon name="plus" size={16} />
-        </button>
-      </div>
-
+    <section className="sidebar-section conversation-panel" aria-label="Hội thoại">
+      <label className="sidebar-search">
+        <Icon name="search" size={14} />
+        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm hội thoại…" />
+      </label>
+      <div className="sidebar-heading"><span>Gần đây</span><b>{active.length}</b></div>
       {active.length ? (
         <div className="conversation-list">
-          {active.map((conversation) => (
-            <ConversationItem
-              key={conversation.id}
-              conversation={conversation}
-              selected={conversation.id === selectedId}
-              busy={busy}
-              onSelect={onSelect}
-              onRename={onRename}
-              onArchive={onArchive}
-            />
-          ))}
+          {active.map((conversation) => <ConversationItem key={conversation.id} conversation={conversation} {...itemProps} />)}
         </div>
       ) : (
-        <p className="conversation-empty">Chưa có conversation nào.</p>
+        <p className="conversation-empty">{term ? "Không tìm thấy hội thoại phù hợp." : "Chưa có hội thoại nào. Hãy đặt câu hỏi đầu tiên."}</p>
       )}
 
       {archived.length > 0 && (
         <details className="archived-conversations">
-          <summary>Archived · {archived.length}</summary>
+          <summary><Icon name="archive" size={13} /> Đã lưu trữ · {archived.length}</summary>
           <div className="conversation-list">
-            {archived.map((conversation) => (
-              <ConversationItem
-                key={conversation.id}
-                conversation={conversation}
-                selected={conversation.id === selectedId}
-                busy={busy}
-                onSelect={onSelect}
-                onRename={onRename}
-                onArchive={onArchive}
-              />
-            ))}
+            {archived.map((conversation) => <ConversationItem key={conversation.id} conversation={conversation} {...itemProps} />)}
           </div>
         </details>
       )}
@@ -79,57 +49,52 @@ export function ConversationSidebar({
   );
 }
 
-function ConversationItem({
-  conversation,
-  selected,
-  busy,
-  onSelect,
-  onRename,
-  onArchive,
-}: {
-  conversation: Conversation;
-  selected: boolean;
-  busy: boolean;
-  onSelect: (conversation: Conversation) => void;
-  onRename: (conversation: Conversation, title: string) => void;
-  onArchive: (conversation: Conversation) => void;
-}) {
-  const [menuOpen, setMenuOpen] = useState(false);
+function ConversationItem({ conversation, selectedId, busy, onSelect, onRename, onArchive }: Omit<Props, "conversations"> & { conversation: Conversation }) {
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(conversation.title);
 
-  function rename() {
-    const title = window.prompt("Tên conversation", conversation.title)?.trim();
-    if (title && title !== conversation.title) onRename(conversation, title);
-    setMenuOpen(false);
+  function commit() {
+    const next = title.trim();
+    if (next && next !== conversation.title) onRename(conversation, next);
+    else setTitle(conversation.title);
+    setEditing(false);
   }
 
-  function archive() {
-    if (window.confirm(`Archive “${conversation.title}”?`)) onArchive(conversation);
-    setMenuOpen(false);
+  if (editing) {
+    return (
+      <form className="conversation-item editing" onSubmit={(event) => { event.preventDefault(); commit(); }}>
+        <input autoFocus value={title} maxLength={255} onChange={(event) => setTitle(event.target.value)} onBlur={commit}
+          onKeyDown={(event) => { if (event.key === "Escape") { setTitle(conversation.title); setEditing(false); } }} />
+      </form>
+    );
   }
 
   return (
-    <div className={selected ? "conversation-item selected" : "conversation-item"}>
+    <div className={conversation.id === selectedId ? "conversation-item selected" : "conversation-item"}>
       <button className="conversation-select" onClick={() => onSelect(conversation)}>
-        <span className="history-icon"><Icon name="clock" size={14} /></span>
+        <Icon name="message" size={14} />
         <span className="conversation-copy">
           <strong>{conversation.title}</strong>
-          <small>{conversation.dataSourceName} · {formatDate(conversation.updatedAt)}</small>
+          <small>{conversation.dataSourceName} · {formatDate(conversation.lastMessageAt ?? conversation.updatedAt)}</small>
         </span>
       </button>
-      <button className="conversation-menu-button" onClick={() => setMenuOpen((open) => !open)} disabled={busy} aria-label="Conversation actions">
-        ···
-      </button>
-      {menuOpen && (
-        <div className="conversation-menu">
-          <button onClick={rename}>Rename</button>
-          {conversation.status === "ACTIVE" && <button onClick={archive}>Archive</button>}
-        </div>
-      )}
+      <span className="conversation-actions">
+        <button onClick={() => setEditing(true)} disabled={busy} title="Đổi tên"><Icon name="edit" size={13} /></button>
+        {conversation.status === "ACTIVE" && (
+          <button onClick={() => { if (window.confirm(`Lưu trữ “${conversation.title}”?`)) onArchive(conversation); }} disabled={busy} title="Lưu trữ">
+            <Icon name="archive" size={13} />
+          </button>
+        )}
+      </span>
     </div>
   );
 }
 
 function formatDate(value: string) {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString("vi-VN");
+  if (Number.isNaN(date.getTime())) return "";
+  const today = new Date();
+  return date.toDateString() === today.toDateString()
+    ? date.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
+    : date.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" });
 }

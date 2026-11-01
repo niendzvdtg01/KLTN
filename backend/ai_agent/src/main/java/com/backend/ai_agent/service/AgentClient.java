@@ -66,13 +66,13 @@ public class AgentClient {
      * Asks the agent for its next action given every step taken so far. Failures (agent down,
      * timeout, invalid decision) are thrown as {@link AgentUnavailableException} so the caller can retry.
      */
-    public AgentStep step(String question, String schemaJson, List<Map<String, String>> conversation,
+    public AgentStep step(String question, String schemaJson, String dialect, List<Map<String, String>> conversation,
             List<Map<String, String>> examples, List<Map<String, Object>> steps, int remainingSteps) {
         try {
             Map<String, Object> schema = schemaJson == null || schemaJson.isBlank()
                     ? Map.of("tables", List.of())
                     : mapper.readValue(schemaJson, Map.class);
-            StepRequest body = new StepRequest(question, normalizeTables(schema.get("tables")), conversation,
+            StepRequest body = new StepRequest(question, normalizeTables(schema.get("tables")), dialect, conversation,
                     examples == null ? List.of() : examples, steps, remainingSteps);
             AgentStep result = client.post().uri("/v1/agent/step")
                     .header("X-API-Key", apiKey).contentType(MediaType.APPLICATION_JSON)
@@ -130,7 +130,7 @@ public class AgentClient {
 
     public record AgentRequest(String question, Object schema, List<Map<String, String>> conversation, int max_rows,
             String previous_sql, String error, List<Map<String, String>> examples) {}
-    public record StepRequest(String question, Object schema, List<Map<String, String>> conversation,
+    public record StepRequest(String question, Object schema, String dialect, List<Map<String, String>> conversation,
             List<Map<String, String>> examples, List<Map<String, Object>> steps, int remaining_steps) {}
     public record AgentStep(String action, String thought, String tool, String table, String column, String sql,
             String title, Chart chart) {}

@@ -2,7 +2,6 @@ package com.backend.ai_agent.service;
 
 import java.math.BigDecimal;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
@@ -12,11 +11,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Service;
 
 import com.backend.ai_agent.entity.DataSourceEntity;
+import com.backend.ai_agent.entity.DbEngineEntity;
 import com.backend.ai_agent.exception.BadRequestException;
 
 import tools.jackson.databind.json.JsonMapper;
@@ -30,14 +29,21 @@ import tools.jackson.databind.json.JsonMapper;
 public class AgentToolService {
     private static final int PREVIEW_ROWS = 20;
     private static final int TOOL_TIMEOUT_SECONDS = 15;
-    private static final Pattern IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z0-9_$]*");
 
     private final SqlSafetyValidator sqlSafetyValidator;
     private final JsonMapper mapper;
+    private final JdbcConnectionFactory connectionFactory;
 
-    public AgentToolService(SqlSafetyValidator sqlSafetyValidator, JsonMapper mapper) {
+    public AgentToolService(SqlSafetyValidator sqlSafetyValidator, JsonMapper mapper,
+            JdbcConnectionFactory connectionFactory) {
         this.sqlSafetyValidator = sqlSafetyValidator;
         this.mapper = mapper;
+        this.connectionFactory = connectionFactory;
+    }
+
+    /** SQL dialect of the source's engine, so the agent writes engine-specific syntax. */
+    public String dialect(DataSourceEntity source) {
+        return connectionFactory.dialect(source);
     }
 
     /** Column metadata of one table, answered from the synced schema snapshot. */
@@ -54,12 +60,14 @@ public class AgentToolService {
         boolean known = found.get("columns") instanceof List<?> columns && columns.stream()
                 .anyMatch(item -> item instanceof Map<?, ?> map && column != null
                         && column.equalsIgnoreCase(String.valueOf(map.get("name"))));
-        if (!known || !IDENTIFIER.matcher(column).matches()) {
+        if (!known || !connectionFactory.isValidIdentifier(column)) {
             throw new BadRequestException("Cột '" + column + "' không có trong bảng '" + table + "'");
         }
-        String name = String.valueOf(found.get("name"));
-        String sql = "SELECT DISTINCT `" + column + "` AS value FROM `" + name + "` WHERE `" + column
-                + "` IS NOT NULL LIMIT " + PREVIEW_ROWS;
+        DbEngineEntity engine = connectionFactory.engine(source.getDbType());
+        String quotedColumn = connectionFactory.quote(engine, column);
+        String sql = connectionFactory.limit(engine, "SELECT DISTINCT " + quotedColumn + " AS sample_value FROM "
+                + connectionFactory.quote(engine, String.valueOf(found.get("name"))) + " WHERE " + quotedColumn
+                + " IS NOT NULL", PREVIEW_ROWS);
         return run(source, sql).get("rows");
     }
 
@@ -69,11 +77,12 @@ public class AgentToolService {
     }
 
     private Map<String, Object> run(DataSourceEntity source, String sql) {
-        try (Connection connection = openConnection(source);
+        try (Connection connection = connectionFactory.open(source);
                 Statement statement = connection.createStatement()) {
             connection.setReadOnly(true);
             statement.setMaxRows(PREVIEW_ROWS);
-            statement.setQueryTimeout(TOOL_TIMEOUT_SECONDS);
+            statement.setQueryTimeout(Math.min(TOOL_TIMEOUT_SECONDS, source.getQueryTimeoutSeconds() == null
+                    ? TOOL_TIMEOUT_SECONDS : source.getQueryTimeoutSeconds()));
             try (ResultSet resultSet = statement.executeQuery(sql)) {
                 ResultSetMetaData metadata = resultSet.getMetaData();
                 List<String> columns = new ArrayList<>();
@@ -113,15 +122,5 @@ public class AgentToolService {
         }
         return tables.stream().filter(Map.class::isInstance).map(item -> (Map<String, Object>) item)
                 .filter(item -> table.equalsIgnoreCase(String.valueOf(item.get("name")))).findFirst();
-    }
-
-    private Connection openConnection(DataSourceEntity source) throws SQLException {
-        if (!"MYSQL".equalsIgnoreCase(source.getDbType())) {
-            throw new SQLException("Chỉ hỗ trợ MySQL");
-        }
-        String url = "jdbc:mysql://" + source.getHost() + ":" + source.getPort() + "/"
-                + source.getDatabaseName()
-                + "?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true";
-        return DriverManager.getConnection(url, source.getUsername(), source.getPassword());
     }
 }

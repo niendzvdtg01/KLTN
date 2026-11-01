@@ -7,12 +7,12 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#F5A623",
+  themeColor: "#4f46e5",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className="h-full antialiased">
+    <html lang="vi" className="h-full antialiased">
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );

@@ -7,7 +7,7 @@ KLTN là ứng dụng cho phép người dùng đăng nhập, khai báo database
 Đã có:
 
 - Đăng ký, đăng nhập bằng JWT cookie và quản lý user.
-- CRUD data source MySQL theo ownership của user.
+- CRUD data source theo ownership của user, hỗ trợ MySQL, MariaDB, PostgreSQL, SQL Server và Oracle.
 - Kiểm tra kết nối và đồng bộ schema database bên ngoài.
 - CRUD conversation, message và archive tài nguyên.
 - Thực thi SQL read-only và lưu lịch sử query execution.
@@ -183,6 +183,20 @@ Các endpoint dưới đây, trừ endpoint public, yêu cầu JWT cookie sau kh
 | `DELETE` | `/v1/data-sources/{id}` | Archive data source |
 | `POST` | `/v1/data-sources/{id}/test-connection` | Kiểm tra kết nối |
 | `POST` | `/v1/data-sources/{id}/sync-schema` | Đồng bộ schema |
+| `POST` | `/v1/data-sources/test-connection?sourceId=` | Kiểm tra cấu hình chưa lưu (blank password + `sourceId` dùng mật khẩu đã lưu) |
+| `GET` | `/v1/db-engines` | Danh sách loại database đang bật |
+
+### Kết nối nhiều loại database
+
+Cách backend kết nối tới từng loại database được lưu trong bảng `db_engines` (V6): driver, `url_template` (`{host}`, `{port}`, `{database}`), ký tự quote, kiểu giới hạn dòng (`LIMIT`/`TOP`/`FETCH`), câu lệnh chọn schema (`schema_init_sql`), thuộc tính mặc định, thuộc tính SSL và thuộc tính timeout. Muốn chỉnh hoặc thêm engine, chỉ cần `UPDATE`/`INSERT` vào bảng này (engine mới cần thêm JDBC driver vào `pom.xml`), ví dụ:
+
+```sql
+UPDATE db_engines SET default_properties = 'sslMode=DISABLED;allowPublicKeyRetrieval=true;serverTimezone=Asia/Ho_Chi_Minh'
+WHERE code = 'MYSQL';
+UPDATE db_engines SET enabled = FALSE WHERE code = 'ORACLE';
+```
+
+Mỗi data source có thêm cấu hình riêng (V7): `schema_name`, `ssl_enabled`, `connect_timeout_seconds`, `query_timeout_seconds`, `max_rows` và bảng `data_source_properties` chứa thuộc tính JDBC bổ sung. Backend từ chối thuộc tính ghi đè `user`/`password` và các thuộc tính driver nguy hiểm (`autoDeserialize`, `allowLoadLocalInfile`, `socketFactory`, `*Interceptor*`, `*Callback*`...). AI agent nhận `dialect` của engine để sinh SQL đúng cú pháp.
 
 `test-connection` chỉ kiểm tra kết nối. `sync-schema` đọc tên bảng, tên cột, kiểu dữ liệu và nullable; không đọc các dòng dữ liệu.
 
@@ -297,6 +311,9 @@ Migration hiện có:
 - `V2__create_users.sql`: users.
 - `V3__alter_data_conversations.sql`: ownership, status và foreign key.
 - `V4__rename_conversation_status.sql`: điều chỉnh status conversation.
+- `V5__feedback_and_message_metadata.sql`: metadata message và feedback.
+- `V6__create_db_engines.sql`: catalog các loại database và cấu hình kết nối.
+- `V7__data_source_connection_settings.sql`: cấu hình kết nối theo data source và `data_source_properties`.
 
 Không sửa migration đã chạy trên database dùng chung. Khi thay đổi schema, tạo migration version mới trước rồi cập nhật entity.
 

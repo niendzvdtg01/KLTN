@@ -12,9 +12,11 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.backend.ai_agent.dto.request.DataSourceRequest;
+import com.backend.ai_agent.dto.response.ConnectionTestResponse;
 import com.backend.ai_agent.dto.response.DataSourceResponse;
 import com.backend.ai_agent.entity.DataSourceEntity;
 import com.backend.ai_agent.exception.UnauthorizedException;
@@ -62,6 +64,15 @@ public class DataSourceController {
     public ResponseEntity<Void> archive(Authentication authentication, @PathVariable Long id) {
         dataSourceService.archive(currentUserId(authentication), id);
         return ResponseEntity.noContent().build();
+    }
+
+    /** Tests unsaved connection settings; {@code sourceId} reuses that source's password when it is blank. */
+    @PostMapping("/test-connection")
+    public ConnectionTestResponse testDraft(
+            Authentication authentication,
+            @RequestParam(required = false) Long sourceId,
+            @RequestBody DataSourceRequest request) {
+        return dataSourceService.testDraft(currentUserId(authentication), sourceId, request);
     }
 
     @PostMapping("/{id}/test-connection")

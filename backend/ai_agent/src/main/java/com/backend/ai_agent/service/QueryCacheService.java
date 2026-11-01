@@ -78,8 +78,9 @@ public class QueryCacheService {
     }
 
     private String key(DataSourceEntity source, String sql) {
-        String fingerprint = source.getId() + "|" + source.getHost() + "|" + source.getPort() + "|"
-                + source.getDatabaseName() + "|" + sql.trim();
+        String fingerprint = source.getId() + "|" + source.getDbType() + "|" + source.getHost() + "|"
+                + source.getPort() + "|" + source.getDatabaseName() + "|" + source.getSchemaName() + "|"
+                + source.getMaxRows() + "|" + sql.trim();
         return KEY_PREFIX + sha256(fingerprint);
     }
 

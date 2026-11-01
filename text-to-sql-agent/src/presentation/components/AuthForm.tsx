@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { login, register } from "../../data/authApi";
+import { Icon } from "./Icon";
 
 export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const isLogin = mode === "login";
@@ -33,17 +34,37 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
   }
 
   return <main className="auth-page">
-    <section className="auth-visual"><div className="auth-brand"><span className="auth-brand-mark">✦</span><span>queryly</span></div><div className="auth-visual-copy"><span className="auth-kicker">TEXT TO SQL WORKSPACE</span><h1>Biến câu hỏi thành<br /><em>insight.</em></h1><p>Truy vấn dữ liệu tự nhiên, nhanh chóng và rõ ràng hơn với Queryly.</p></div><div className="auth-stat"><strong>01</strong><span>Đặt câu hỏi cho dữ liệu<br />bằng ngôn ngữ tự nhiên</span></div></section>
-    <section className="auth-panel"><div className="auth-form-wrap"><div className="auth-mobile-brand"><span className="auth-brand-mark">✦</span><span>queryly</span></div><span className="auth-kicker">{isLogin ? "WELCOME BACK" : "GET STARTED"}</span><h2>{isLogin ? "Chào mừng trở lại" : "Tạo tài khoản của bạn"}</h2><p className="auth-subtitle">{isLogin ? "Đăng nhập để tiếp tục tới workspace." : "Bắt đầu khám phá dữ liệu theo cách đơn giản hơn."}</p>
+    <section className="auth-visual">
+      <div className="auth-brand"><span className="brand-mark"><Icon name="sparkle" size={16} /></span><span>queryly</span></div>
+      <div className="auth-visual-copy">
+        <span className="auth-kicker">AI TEXT-TO-SQL</span>
+        <h1>Hỏi dữ liệu bằng tiếng Việt,<br />nhận câu trả lời <em>tức thì.</em></h1>
+        <p>Kết nối database, đặt câu hỏi tự nhiên. Agent viết SQL chỉ đọc, chạy truy vấn và trình bày kết quả bằng bảng, biểu đồ và phân tích.</p>
+        <ul className="auth-features">
+          <li><Icon name="database" size={16} /> MySQL, MariaDB, PostgreSQL, SQL Server, Oracle</li>
+          <li><Icon name="shield" size={16} /> Chỉ chạy truy vấn đọc, chặn mọi lệnh ghi</li>
+          <li><Icon name="chart" size={16} /> Tự động gợi ý biểu đồ và nhận xét dữ liệu</li>
+        </ul>
+      </div>
+      <div className="auth-preview" aria-hidden="true">
+        <div className="preview-q"><Icon name="user" size={13} /> Doanh thu theo tháng năm nay?</div>
+        <code>SELECT MONTH(created_at) AS thang, SUM(total) AS doanh_thu FROM orders …</code>
+        <div className="preview-bars">{[42, 58, 50, 72, 66, 88].map((height, index) => <span key={index} style={{ height: `${height}%` }} />)}</div>
+      </div>
+    </section>
+    <section className="auth-panel"><div className="auth-form-wrap">
+      <div className="auth-mobile-brand"><span className="brand-mark"><Icon name="sparkle" size={16} /></span><span>queryly</span></div>
+      <h2>{isLogin ? "Chào mừng trở lại" : "Tạo tài khoản"}</h2>
+      <p className="auth-subtitle">{isLogin ? "Đăng nhập để tiếp tục tới workspace của bạn." : "Bắt đầu khám phá dữ liệu theo cách đơn giản hơn."}</p>
       <form onSubmit={handleSubmit} className="auth-form">
         {!isLogin && <label>Họ và tên<input value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Nguyễn Văn A" autoComplete="name" required /></label>}
-        <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com" autoComplete="email" required /></label>
+        <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="ban@congty.com" autoComplete="email" required /></label>
         <label>Mật khẩu<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder={isLogin ? "Nhập mật khẩu" : "Ít nhất 8 ký tự"} autoComplete={isLogin ? "current-password" : "new-password"} minLength={8} required /></label>
         {!isLogin && <label>Xác nhận mật khẩu<input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Nhập lại mật khẩu" autoComplete="new-password" minLength={8} required /></label>}
-        {isLogin && <div className="auth-options"><label className="checkbox-label"><input type="checkbox" /> Ghi nhớ đăng nhập</label><button type="button" className="forgot-link">Quên mật khẩu?</button></div>}
-        {error && <p className="auth-error" role="alert">{error}</p>}
-        <button className="auth-submit" type="submit" disabled={isSubmitting}>{isSubmitting ? "Đang xử lý..." : isLogin ? "Đăng nhập" : "Tạo tài khoản"}<span>→</span></button>
-      </form><p className="auth-switch">{isLogin ? "Chưa có tài khoản?" : "Đã có tài khoản?"} <Link href={isLogin ? "/register" : "/login"}>{isLogin ? "Đăng ký ngay" : "Đăng nhập"}</Link></p><p className="auth-terms">Bằng việc tiếp tục, bạn đồng ý với Điều khoản sử dụng và Chính sách bảo mật của Queryly.</p>
+        {error && <p className="auth-error" role="alert"><Icon name="alert" size={15} /> {error}</p>}
+        <button className="primary-button large auth-submit" type="submit" disabled={isSubmitting}>{isSubmitting ? <span className="spinner light" /> : null}{isSubmitting ? "Đang xử lý…" : isLogin ? "Đăng nhập" : "Tạo tài khoản"}</button>
+      </form>
+      <p className="auth-switch">{isLogin ? "Chưa có tài khoản?" : "Đã có tài khoản?"} <Link href={isLogin ? "/register" : "/login"}>{isLogin ? "Đăng ký ngay" : "Đăng nhập"}</Link></p>
     </div></section>
   </main>;
 }

@@ -27,6 +27,7 @@ import com.backend.ai_agent.entity.QueryExecutionEntity;
 import com.backend.ai_agent.exception.BadRequestException;
 import com.backend.ai_agent.repository.ConversationRepository;
 import com.backend.ai_agent.repository.DataSourceRepository;
+import com.backend.ai_agent.repository.DbEngineRepository;
 import com.backend.ai_agent.repository.MessageFeedbackRepository;
 import com.backend.ai_agent.repository.MessageRepository;
 import com.backend.ai_agent.repository.UserRepository;
@@ -50,7 +51,7 @@ class ConversationServiceAgentLoopTest {
         service = new ConversationService(conversationRepository, messageRepository,
                 mock(MessageFeedbackRepository.class), mock(DataSourceRepository.class), mock(UserRepository.class),
                 agentClient, queryExecutionService, mock(QueryCacheService.class),
-                new AgentToolService(validator, mapper), validator, mapper, 6, 2);
+                new AgentToolService(validator, mapper, new JdbcConnectionFactory(mock(DbEngineRepository.class))), validator, mapper, 6, 2);
 
         DataSourceEntity source = new DataSourceEntity();
         source.setStatus("ACTIVE");
@@ -64,7 +65,7 @@ class ConversationServiceAgentLoopTest {
 
     @Test
     void retriesUnreachableAgentThenUsesToolAndFinishes() {
-        when(agentClient.step(anyString(), anyString(), anyList(), anyList(), anyList(), anyInt()))
+        when(agentClient.step(anyString(), anyString(), anyString(), anyList(), anyList(), anyList(), anyInt()))
                 .thenThrow(new AgentClient.AgentUnavailableException("timeout"))
                 .thenReturn(tool("describe_table"))
                 .thenReturn(finalStep("SELECT COUNT(*) AS total FROM orders"));
@@ -79,7 +80,7 @@ class ConversationServiceAgentLoopTest {
 
     @Test
     void feedsFailedSqlBackToAgentAndReportsRetry() {
-        when(agentClient.step(anyString(), anyString(), anyList(), anyList(), anyList(), anyInt()))
+        when(agentClient.step(anyString(), anyString(), anyString(), anyList(), anyList(), anyList(), anyInt()))
                 .thenReturn(finalStep("SELECT total FROM orders"))
                 .thenReturn(finalStep("SELECT COUNT(*) AS total FROM orders"));
         when(queryExecutionService.execute(eq(7L), eq(1L), any()))
@@ -96,7 +97,7 @@ class ConversationServiceAgentLoopTest {
 
     @Test
     void blocksUnsafeSqlAndGivesUpAfterMaxRetries() {
-        when(agentClient.step(anyString(), anyString(), anyList(), anyList(), anyList(), anyInt()))
+        when(agentClient.step(anyString(), anyString(), anyString(), anyList(), anyList(), anyList(), anyInt()))
                 .thenReturn(finalStep("DELETE FROM orders"));
 
         BadRequestException exception = assertThrows(BadRequestException.class, this::chat);
